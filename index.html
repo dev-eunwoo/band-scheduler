@@ -90,6 +90,7 @@
     height: 38px; border-bottom: 1px solid #e5e5ea;
     border-right: 1px solid #e5e5ea; cursor: pointer;
     transition: background 0.08s; user-select: none;
+    -webkit-user-select: none; -webkit-touch-callout: none;
   }
   .tg-cell.selected { background: #534AB7; }
   .tg-cell:not(.selected):active { background: #EEEDFE; }
@@ -515,6 +516,7 @@ function renderAllDateCards() {
 
     gridWrap.appendChild(grid)
 
+    gridWrap.addEventListener('contextmenu', e => e.preventDefault())
     gridWrap.addEventListener('touchmove', e => {
       if (!state.isDragging) return
       const t = e.touches[0]
