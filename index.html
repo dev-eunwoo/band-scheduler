@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>합주 스케줄러</title>
+<title>아무런밴드 합주 스케줄러</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -75,8 +75,7 @@
   }
   .tg-header {
     background: #f2f2f7; font-size: 10px; color: #8e8e93;
-    text-align: center; padding: 5px 2px;
-    border-bottom: 1px solid #e5e5ea;
+    text-align: center; padding: 5px 2px; border-bottom: 1px solid #e5e5ea;
   }
   .tg-label {
     background: #f2f2f7; font-size: 10px; color: #8e8e93;
@@ -135,8 +134,7 @@
 
   .loading-overlay {
     position: fixed; inset: 0; background: rgba(255,255,255,0.85);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 100; display: none;
+    display: none; align-items: center; justify-content: center; z-index: 100;
   }
   .loading-overlay.show { display: flex; }
   .spinner {
@@ -145,15 +143,6 @@
     animation: spin 0.7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-
-  .pagination { display: flex; gap: 8px; justify-content: center; margin-bottom: 12px; }
-  .page-dot { width: 8px; height: 8px; border-radius: 50%; background: #e5e5ea; cursor: pointer; transition: background 0.2s; }
-  .page-dot.active { background: #534AB7; }
-
-  .month-tag {
-    display: inline-block; font-size: 12px; padding: 3px 10px;
-    border-radius: 99px; background: #f2f2f7; color: #8e8e93; margin-bottom: 12px;
-  }
 </style>
 </head>
 <body>
@@ -167,8 +156,8 @@
 <div id="screen-home" class="screen active">
   <div class="header">
     <div style="font-size:36px;margin-bottom:10px">🎸</div>
-    <h1>합주 스케줄러</h1>
-    <p>가능한 시간을 입력하면<br>3시간 겹치는 시간을 자동으로 찾아줘요</p>
+    <h1>아무런밴드 합주 스케줄러</h1>
+    <p>가능한 시간을 입력하면<br>겹치는 시간을 자동으로 찾아줘요</p>
   </div>
   <div class="card">
     <div class="section-label">이번 달 현황</div>
@@ -213,7 +202,7 @@
     <p>가능한 시간대를 탭 또는 드래그로 선택하세요</p>
   </div>
   <div id="time-cards-wrap"></div>
-  <button class="primary-btn" id="time-next-btn">저장하기 ✓</button>
+  <button class="primary-btn" id="time-save-btn">저장하기 ✓</button>
   <button class="ghost-btn" id="btn-time-back">← 날짜 다시 선택</button>
 </div>
 
@@ -232,7 +221,7 @@
 // ─── Supabase 설정 ───────────────────────────────────────────
 const SUPABASE_URL = 'https://ppyagdblitedffvaaywu.supabase.co'
 const SUPABASE_ANON_KEY = 'sb_publishable_jwuW8cPERQ2CCPTZtiYT1w_bSQAl2km'
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // ─── 멤버 정보 ───────────────────────────────────────────────
 const MEMBERS = [
@@ -248,13 +237,12 @@ const HOURS = Array.from({ length: 16 }, (_, i) => i + 8) // 8시~23시
 
 // ─── 앱 상태 ─────────────────────────────────────────────────
 const state = {
-  currentMonth: toMonthStr(new Date()), // '2026-06'
+  currentMonth: toMonthStr(new Date()),
   currentMemberIdx: null,
   selectedDates: [],
-  currentDateIdx: 0,
   viewMonth: new Date().getMonth(),
   viewYear: new Date().getFullYear(),
-  memberData: {}, // { memberIdx: { 'YYYY-MM-DD': { hour: true } } }
+  memberData: {},
   isDragging: false,
   dragMode: true,
 }
@@ -266,12 +254,11 @@ function toMonthStr(d) {
 // ─── 로딩 / 토스트 ───────────────────────────────────────────
 function showLoading() { document.getElementById('loading-overlay').classList.add('show') }
 function hideLoading() { document.getElementById('loading-overlay').classList.remove('show') }
-
 function showToast(msg) {
   const t = document.getElementById('toast')
   t.textContent = msg
   t.classList.add('show')
-  setTimeout(() => t.classList.remove('show'), 2000)
+  setTimeout(() => t.classList.remove('show'), 2200)
 }
 
 // ─── 화면 전환 ───────────────────────────────────────────────
@@ -282,9 +269,9 @@ async function goTo(id) {
   if (id === 'screen-result') await renderResult()
 }
 
-// ─── Supabase: 이번 달 데이터 불러오기 ──────────────────────
+// ─── Supabase: 이번 달 데이터 로드 ──────────────────────────
 async function loadMonthData() {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('availabilities')
     .select('member_idx, date, hour')
     .eq('month', state.currentMonth)
@@ -299,12 +286,11 @@ async function loadMonthData() {
   })
 }
 
-// ─── Supabase: 멤버 시간 저장 (upsert) ──────────────────────
+// ─── Supabase: 멤버 시간 저장 ───────────────────────────────
 async function saveMemberData(memberIdx) {
   showLoading()
   try {
-    // 이번 달 해당 멤버 기존 데이터 전체 삭제 후 재삽입
-    await supabase
+    await db
       .from('availabilities')
       .delete()
       .eq('month', state.currentMonth)
@@ -314,17 +300,12 @@ async function saveMemberData(memberIdx) {
     const memberDates = state.memberData[memberIdx] || {}
     Object.keys(memberDates).forEach(date => {
       Object.keys(memberDates[date]).forEach(hour => {
-        rows.push({
-          month: state.currentMonth,
-          member_idx: memberIdx,
-          date,
-          hour: parseInt(hour),
-        })
+        rows.push({ month: state.currentMonth, member_idx: memberIdx, date, hour: parseInt(hour) })
       })
     })
 
     if (rows.length > 0) {
-      const { error } = await supabase.from('availabilities').insert(rows)
+      const { error } = await db.from('availabilities').insert(rows)
       if (error) throw error
     }
 
@@ -343,11 +324,9 @@ async function refreshHome() {
   showLoading()
   await loadMonthData()
   hideLoading()
-
   const [y, m] = state.currentMonth.split('-')
   document.getElementById('home-month').textContent = y + '년 ' + parseInt(m) + '월'
-  const done = Object.keys(state.memberData).length
-  document.getElementById('home-progress').textContent = done + ' / 6명'
+  document.getElementById('home-progress').textContent = Object.keys(state.memberData).length + ' / 6명'
 }
 
 // ─── 멤버 선택 ───────────────────────────────────────────────
@@ -357,32 +336,27 @@ function renderMemberGrid() {
   MEMBERS.forEach((m, i) => {
     const isDone = !!state.memberData[i]
     const btn = document.createElement('button')
-    btn.className = 'member-btn' +
-      (state.currentMemberIdx === i ? ' selected' : '') +
-      (isDone ? ' done' : '')
+    btn.className = 'member-btn' + (state.currentMemberIdx === i ? ' selected' : '') + (isDone ? ' done' : '')
     btn.innerHTML =
       '<div style="font-size:24px;margin-bottom:4px">' + m.emoji + '</div>' +
       '<div style="font-weight:600;font-size:14px">' + m.name + (isDone ? ' <span class="done-check">✓</span>' : '') + '</div>' +
       '<div style="font-size:11px;color:#8e8e93;margin-top:2px">' + m.role + '</div>'
-    btn.onclick = () => {
+    btn.addEventListener('click', () => {
       state.currentMemberIdx = i
       renderMemberGrid()
       document.getElementById('member-next-btn').disabled = false
-    }
+    })
     grid.appendChild(btn)
   })
 }
 
 function memberSelected() {
   if (state.currentMemberIdx === null) return
-  // 기존 입력된 날짜 불러오기
   const existing = state.memberData[state.currentMemberIdx]
   state.selectedDates = existing ? Object.keys(existing).sort() : []
-  const m = MEMBERS[state.currentMemberIdx]
-  document.getElementById('cal-member-name').textContent = m.name + '의 가능한 날짜'
+  document.getElementById('cal-member-name').textContent = MEMBERS[state.currentMemberIdx].name + '의 가능한 날짜'
   renderCalendar()
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'))
-  document.getElementById('screen-calendar').classList.add('active')
+  goTo('screen-calendar')
 }
 
 // ─── 캘린더 ─────────────────────────────────────────────────
@@ -407,7 +381,6 @@ function renderCalendar() {
   for (let i = 0; i < first; i++) {
     const el = document.createElement('div'); el.className = 'cal-day empty'; grid.appendChild(el)
   }
-
   for (let d = 1; d <= days; d++) {
     const el = document.createElement('div')
     const dateStr = state.viewYear + '-' + String(state.viewMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
@@ -422,7 +395,7 @@ function renderCalendar() {
       (hasData ? ' has-data' : '') +
       (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '')
     el.textContent = d
-    if (!isPast) el.onclick = () => toggleDate(dateStr, el)
+    if (!isPast) el.addEventListener('click', () => toggleDate(dateStr, el))
     grid.appendChild(el)
   }
   updateCalBtn()
@@ -449,15 +422,10 @@ function changeMonth(dir) {
 
 // ─── 시간 입력 (스크롤 방식) ────────────────────────────────
 function goToTimeInput() {
-  const m = MEMBERS[state.currentMemberIdx]
-  document.getElementById('time-screen-title').textContent = m.name + '의 가능한 시간'
+  document.getElementById('time-screen-title').textContent = MEMBERS[state.currentMemberIdx].name + '의 가능한 시간'
   renderAllDateCards()
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'))
   document.getElementById('screen-time').classList.add('active')
-  // 저장 버튼 이벤트 (중복 방지)
-  const btn = document.getElementById('time-next-btn')
-  btn.replaceWith(btn.cloneNode(true))
-  document.getElementById('time-next-btn').addEventListener('click', () => saveMemberData(state.currentMemberIdx))
 }
 
 function renderAllDateCards() {
@@ -470,26 +438,22 @@ function renderAllDateCards() {
     const dow = days2[new Date(parseInt(y), parseInt(m) - 1, parseInt(d)).getDay()]
     const existing = state.memberData[state.currentMemberIdx]?.[dateStr] || {}
 
-    // 날짜 카드
     const card = document.createElement('div')
     card.className = 'card'
-    card.style.marginBottom = '12px'
 
-    // 날짜 라벨
     const dateLabel = document.createElement('div')
     dateLabel.style.cssText = 'font-size:14px;font-weight:600;color:#1c1c1e;margin-bottom:10px'
     dateLabel.textContent = parseInt(m) + '월 ' + parseInt(d) + '일 (' + dow + ')'
     card.appendChild(dateLabel)
 
-    // 그리드 래퍼
-    const wrap2 = document.createElement('div')
-    wrap2.className = 'time-grid-wrap'
+    const gridWrap = document.createElement('div')
+    gridWrap.className = 'time-grid-wrap'
 
     const grid = document.createElement('div')
     grid.className = 'time-grid'
     grid.style.setProperty('--time-cols', HOURS.length)
 
-    // 헤더행
+    // 헤더
     const corner = document.createElement('div')
     corner.className = 'tg-header'
     grid.appendChild(corner)
@@ -500,7 +464,7 @@ function renderAllDateCards() {
       grid.appendChild(el)
     })
 
-    // 데이터행
+    // 셀행
     const rowLabel = document.createElement('div')
     rowLabel.className = 'tg-label'
     rowLabel.textContent = '가능'
@@ -531,18 +495,18 @@ function renderAllDateCards() {
         e.preventDefault()
         const t = e.touches[0]
         const el2 = document.elementFromPoint(t.clientX, t.clientY)
-        if (el2?.classList.contains('tg-cell')) toggleCell(el2, state.dragMode)
+        if (el2 && el2.classList.contains('tg-cell')) toggleCell(el2, state.dragMode)
       }, { passive: false })
 
       grid.appendChild(cell)
     })
 
-    wrap2.appendChild(grid)
-    card.appendChild(wrap2)
+    gridWrap.appendChild(grid)
+    card.appendChild(gridWrap)
 
     const hint = document.createElement('p')
     hint.style.cssText = 'font-size:11px;color:#aeaeb2;margin-top:8px;text-align:center'
-    hint.textContent = '탭 또는 드래그로 선택'
+    hint.textContent = '탭 또는 드래그로 선택 · 옆으로 스크롤'
     card.appendChild(hint)
 
     wrap.appendChild(card)
@@ -564,8 +528,6 @@ function toggleCell(cell, forceMode) {
   if (add) state.memberData[state.currentMemberIdx][dateStr][h] = true
   else delete state.memberData[state.currentMemberIdx][dateStr][h]
 }
-
-function nextDateOrFinish() {} // 사용 안 함
 
 // ─── 결과 계산 ───────────────────────────────────────────────
 function findSlots() {
@@ -589,7 +551,7 @@ function findSlots() {
   Object.keys(dateMap).sort().forEach(dateStr => {
     const hours = dateMap[dateStr]
 
-    // 3시간 슬롯 먼저 탐색
+    // 3시간 슬롯
     HOURS.forEach(startH => {
       const needed = [startH, startH + 1, startH + 2]
       if (needed.some(h => h > 22)) return
@@ -599,21 +561,13 @@ function findSlots() {
       }, [...(hours[needed[0]] || [])])
       if (common.length === 0) return
       const key = dateStr + '-' + startH + '-3h'
-      if (!seen.has(key)) {
-        seen.add(key)
-        slots.push({
-          dateStr, startH, endH: startH + 3, duration: 3,
-          count: common.length, members: common,
-          isAll: common.length === memberKeys.length,
-        })
-      }
+      if (!seen.has(key)) { seen.add(key); slots.push({ dateStr, startH, endH: startH + 3, duration: 3, count: common.length, members: common, isAll: common.length === memberKeys.length }) }
     })
 
-    // 2시간 슬롯 탐색 (3시간으로 커버된 시작 시간은 제외)
+    // 2시간 슬롯 (3시간 커버된 시작 시간 제외)
     HOURS.forEach(startH => {
       const needed = [startH, startH + 1]
       if (needed.some(h => h > 22)) return
-      // 이 시작 시간이 이미 3시간 슬롯에 포함돼 있으면 스킵
       if (seen.has(dateStr + '-' + startH + '-3h')) return
       const common = needed.reduce((acc, h) => {
         const s = new Set(hours[h] || [])
@@ -621,18 +575,10 @@ function findSlots() {
       }, [...(hours[needed[0]] || [])])
       if (common.length === 0) return
       const key = dateStr + '-' + startH + '-2h'
-      if (!seen.has(key)) {
-        seen.add(key)
-        slots.push({
-          dateStr, startH, endH: startH + 2, duration: 2,
-          count: common.length, members: common,
-          isAll: common.length === memberKeys.length,
-        })
-      }
+      if (!seen.has(key)) { seen.add(key); slots.push({ dateStr, startH, endH: startH + 2, duration: 2, count: common.length, members: common, isAll: common.length === memberKeys.length }) }
     })
   })
 
-  // 정렬: 전원+3h > 전원+2h > 부분+3h > 부분+2h, 같으면 날짜/시간 순
   return slots.sort((a, b) => {
     if (b.isAll !== a.isAll) return b.isAll - a.isAll
     if (b.duration !== a.duration) return b.duration - a.duration
@@ -648,9 +594,8 @@ async function renderResult() {
   hideLoading()
 
   const totalDone = Object.keys(state.memberData).length
-  const progEl = document.getElementById('result-progress')
   const [y, m] = state.currentMonth.split('-')
-  progEl.innerHTML =
+  document.getElementById('result-progress').innerHTML =
     '<div class="section-label">' + y + '년 ' + parseInt(m) + '월 입력 현황</div>' +
     '<div class="progress-bar"><div class="progress-fill" style="width:' + Math.round(totalDone / 6 * 100) + '%"></div></div>' +
     '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
@@ -675,29 +620,23 @@ async function renderResult() {
   slots.slice(0, 8).forEach(s => {
     const [sy, sm, sd] = s.dateStr.split('-')
     const dw = days2[new Date(parseInt(sy), parseInt(sm) - 1, parseInt(sd)).getDay()]
-    const div = document.createElement('div')
-    div.className = 'result-slot' + (s.isAll ? ' best' : '')
     const durationBadge = s.duration === 3
       ? '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#f2f2f7;color:#8e8e93;margin-left:6px">3시간</span>'
       : '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#FFF4E5;color:#B85C00;margin-left:6px">2시간</span>'
+    const div = document.createElement('div')
+    div.className = 'result-slot' + (s.isAll ? ' best' : '')
     div.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:flex-start">' +
         '<div>' +
           '<div class="result-date">' + parseInt(sm) + '월 ' + parseInt(sd) + '일 (' + dw + ')</div>' +
           '<div style="display:flex;align-items:center">' +
-            '<div class="result-time">' + s.startH + ':00 – ' + s.endH + ':00</div>' +
-            durationBadge +
+            '<div class="result-time">' + s.startH + ':00 – ' + s.endH + ':00</div>' + durationBadge +
           '</div>' +
         '</div>' +
-        (s.isAll
-          ? '<span class="result-badge">전원 가능 🎉</span>'
-          : '<span class="result-badge partial">' + s.count + '/' + Object.keys(state.memberData).length + '명</span>') +
+        (s.isAll ? '<span class="result-badge">전원 가능 🎉</span>' : '<span class="result-badge partial">' + s.count + '/' + Object.keys(state.memberData).length + '명</span>') +
       '</div>' +
       '<div class="member-dots">' +
-        s.members.map(mi =>
-          '<div class="dot" style="background:' + MEMBERS[mi].color + '" title="' + MEMBERS[mi].name + '">' +
-          MEMBERS[mi].name[0] + '</div>'
-        ).join('') +
+        s.members.map(mi => '<div class="dot" style="background:' + MEMBERS[mi].color + '" title="' + MEMBERS[mi].name + '">' + MEMBERS[mi].name[0] + '</div>').join('') +
       '</div>'
     list.appendChild(div)
   })
@@ -714,20 +653,20 @@ async function init() {
   document.getElementById('btn-cal-next').addEventListener('click', () => changeMonth(1))
   document.getElementById('cal-next-btn').addEventListener('click', () => goToTimeInput())
   document.getElementById('btn-cal-back').addEventListener('click', () => goTo('screen-select-member'))
+  document.getElementById('time-save-btn').addEventListener('click', () => saveMemberData(state.currentMemberIdx))
   document.getElementById('btn-time-back').addEventListener('click', () => goTo('screen-calendar'))
   document.getElementById('btn-result-enter').addEventListener('click', () => goTo('screen-select-member'))
   document.getElementById('btn-result-home').addEventListener('click', () => goTo('screen-home'))
 
+  // 초기 데이터 로드
   showLoading()
   await loadMonthData()
   hideLoading()
+
   renderMemberGrid()
   const [y, m] = state.currentMonth.split('-')
   document.getElementById('home-month').textContent = y + '년 ' + parseInt(m) + '월'
-  const done = Object.keys(state.memberData).length
-  document.getElementById('home-progress').textContent = done + ' / 6명'
-  state.viewMonth = new Date().getMonth()
-  state.viewYear = new Date().getFullYear()
+  document.getElementById('home-progress').textContent = Object.keys(state.memberData).length + ' / 6명'
 }
 
 init()
