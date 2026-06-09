@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>아무런밴드 합주 스케줄러</title>
+<title>아무런밴드 스케줄러</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -138,17 +138,13 @@
 <div id="screen-home" class="screen active">
   <div class="header">
     <div style="font-size:36px;margin-bottom:10px">🎸</div>
-    <h1>아무런밴드 합주 스케줄러</h1>
+    <h1>아무런밴드 스케줄러</h1>
     <p>가능한 시간을 입력하면<br>겹치는 시간을 자동으로 찾아줘요</p>
   </div>
-  <div class="card">
-    <div class="section-label">이번 달 현황</div>
-    <div class="info-row"><span style="color:#8e8e93">대상 월</span><span id="home-month" style="font-weight:600"></span></div>
-    <div class="info-row"><span style="color:#8e8e93">합주 시간</span><span style="font-weight:600">2시간 또는 3시간</span></div>
-    <div class="info-row"><span style="color:#8e8e93">입력 완료</span><span id="home-progress" style="font-weight:600;color:#534AB7">0 / 6명</span></div>
-  </div>
+  <div id="home-slots-card" class="card"></div>
+  <div id="home-status-card" class="card"></div>
   <button class="primary-btn" id="btn-home-enter">내 가능 시간 입력하기</button>
-  <button class="ghost-btn" id="btn-home-result">합주 가능 시간 보기 →</button>
+  <button class="ghost-btn" id="btn-home-result">합주 가능 시간 전체 보기 →</button>
 </div>
 
 <!-- 멤버 선택 -->
@@ -264,25 +260,12 @@ async function goTo(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'))
   document.getElementById(id).classList.add('active')
   if (id === 'screen-home') await refreshHome()
-  if (id === 'screen-select-member') renderMemberGrid()
+  if (id === 'screen-select-member') {
+    state.currentMemberIdx = null
+    document.getElementById('member-next-btn').disabled = true
+    renderMemberGrid()
+  }
   if (id === 'screen-result') await renderResult()
-}
-
-// ─── Supabase: 플래닝 라운드 기준 로드 (홈 현황용) ──────────
-async function loadMonthData() {
-  const { data, error } = await db
-    .from('availabilities')
-    .select('member_idx, date, hour')
-    .eq('month', state.currentMonth)
-
-  if (error) { console.error(error); return }
-
-  state.memberData = {}
-  data.forEach(row => {
-    if (!state.memberData[row.member_idx]) state.memberData[row.member_idx] = {}
-    if (!state.memberData[row.member_idx][row.date]) state.memberData[row.member_idx][row.date] = {}
-    state.memberData[row.member_idx][row.date][row.hour] = true
-  })
 }
 
 // ─── Supabase: 날짜 기준 로드 (결과 화면용) ─────────────────
@@ -337,11 +320,85 @@ async function saveMemberData(memberIdx) {
 // ─── 홈 ─────────────────────────────────────────────────────
 async function refreshHome() {
   showLoading()
-  await loadMonthData()
+  const today = new Date().toISOString().slice(0, 10)
+  const { data, error } = await db
+    .from('availabilities')
+    .select('member_idx, date, hour')
+    .gte('date', today)
   hideLoading()
-  const [y, m] = state.currentMonth.split('-')
-  document.getElementById('home-month').textContent = y + '년 ' + parseInt(m) + '월'
-  document.getElementById('home-progress').textContent = Object.keys(state.memberData).length + ' / 6명'
+
+  if (error) { console.error(error); return }
+
+  state.memberData = {}
+  data.forEach(row => {
+    if (!state.memberData[row.member_idx]) state.memberData[row.member_idx] = {}
+    if (!state.memberData[row.member_idx][row.date]) state.memberData[row.member_idx][row.date] = {}
+    state.memberData[row.member_idx][row.date][row.hour] = true
+  })
+
+  const done = Object.keys(state.memberData).map(Number)
+
+  // 입력 현황 카드
+  document.getElementById('home-status-card').innerHTML =
+    '<div class="section-label">입력 현황</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+      '<span style="font-size:13px;color:#8e8e93">입력 완료</span>' +
+      '<span style="font-weight:600;color:#534AB7">' + done.length + ' / 6명</span>' +
+    '</div>' +
+    '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
+    MEMBERS.map((m, i) =>
+      '<span class="tag' + (done.includes(i) ? ' done' : '') + '">' +
+      m.emoji + ' ' + m.name + (done.includes(i) ? ' ✓' : '') + '</span>'
+    ).join('') + '</div>'
+
+  // 다음 합주 후보 카드
+  const slotsCard = document.getElementById('home-slots-card')
+  const DAY_LABELS = ['일','월','화','수','목','금','토']
+
+  if (done.length === 0) {
+    slotsCard.innerHTML =
+      '<div class="section-label">다음 합주 후보</div>' +
+      '<div style="text-align:center;padding:1.2rem 0;color:#8e8e93;font-size:14px;line-height:1.7">' +
+      '멤버들이 시간을 입력하면<br>여기에 나타나요 🎸</div>'
+    return
+  }
+
+  const slots = findSlots()
+
+  if (slots.length === 0) {
+    slotsCard.innerHTML =
+      '<div class="section-label">다음 합주 후보</div>' +
+      '<div style="text-align:center;padding:1.2rem 0;color:#8e8e93;font-size:14px;line-height:1.7">' +
+      '아직 겹치는 시간이 없어요<br>더 많은 멤버가 입력하면 나타나요</div>'
+    return
+  }
+
+  const top = slots.slice(0, 3)
+  slotsCard.innerHTML =
+    '<div class="section-label">다음 합주 후보</div>' +
+    top.map((s, si) => {
+      const [sy, sm, sd] = s.dateStr.split('-')
+      const dw = DAY_LABELS[new Date(parseInt(sy), parseInt(sm) - 1, parseInt(sd)).getDay()]
+      const durationBadge = s.duration === 3
+        ? '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#534AB7;color:#fff;font-weight:600">3시간</span>'
+        : '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#FFF4E5;color:#B85C00">2시간</span>'
+      const countBadge = s.isAll
+        ? '<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#9FE1CB;color:#085041;font-weight:600">전원 🎉</span>'
+        : '<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#EEEDFE;color:#3C3489;font-weight:600">' + s.count + '/' + MEMBERS.length + '명</span>'
+      return '<div style="padding:10px 0' + (si < top.length - 1 ? ';border-bottom:1px solid #f2f2f7' : '') + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div>' +
+            '<div style="font-size:12px;color:#8e8e93">' + parseInt(sm) + '월 ' + parseInt(sd) + '일 (' + dw + ')</div>' +
+            '<div style="font-size:17px;font-weight:600;color:#1c1c1e;margin:2px 0">' + s.startH + ':00 – ' + s.endH + ':00</div>' +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' + durationBadge + countBadge + '</div>' +
+        '</div>' +
+        '<div style="font-size:13px;margin-top:4px">' + s.members.map(mi => MEMBERS[mi].emoji).join(' ') + '</div>' +
+      '</div>'
+    }).join('') +
+    (slots.length > 3
+      ? '<div style="text-align:center;padding:8px 0 0;font-size:12px;color:#8e8e93">+ ' + (slots.length - 3) + '개 더 →</div>'
+      : '')
 }
 
 // ─── 멤버 선택 ───────────────────────────────────────────────
@@ -669,7 +726,7 @@ async function renderResult() {
     const [sy, sm, sd] = s.dateStr.split('-')
     const dw = DAY_LABELS[new Date(parseInt(sy), parseInt(sm) - 1, parseInt(sd)).getDay()]
     const durationBadge = s.duration === 3
-      ? '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#f2f2f7;color:#8e8e93;margin-left:6px">3시간</span>'
+      ? '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#534AB7;color:#fff;margin-left:6px;font-weight:600">3시간</span>'
       : '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#FFF4E5;color:#B85C00;margin-left:6px">2시간</span>'
     const div = document.createElement('div')
     div.className = 'result-slot' + (s.isAll ? ' best' : '')
