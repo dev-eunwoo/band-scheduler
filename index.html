@@ -198,7 +198,6 @@
   <div id="result-month-tabs"></div>
   <div id="result-progress" class="card" style="margin-bottom:12px"></div>
   <div id="result-list"></div>
-  <button class="primary-btn" id="btn-result-enter">다른 멤버 시간 입력</button>
   <button class="ghost-btn" id="btn-result-home">← 홈으로</button>
 </div>
 
@@ -275,15 +274,26 @@ async function loadMonthData(month) {
   })
 }
 
-function getResultMonths() {
-  const [y, m] = state.currentMonth.split('-').map(Number)
-  const nextM = m === 12 ? 1 : m + 1
-  const nextY = m === 12 ? y + 1 : y
-  return [state.currentMonth, nextY + '-' + String(nextM).padStart(2, '0')]
-}
-
 function monthLabel(monthStr) {
   return parseInt(monthStr.split('-')[1]) + '월'
+}
+
+// ─── 결과용: 날짜(date) 기준으로 해당 월 데이터 로드 ────────
+async function loadMonthDataByDate(month) {
+  const { data, error } = await db
+    .from('availabilities')
+    .select('member_idx, date, hour')
+    .gte('date', month + '-01')
+    .lte('date', month + '-31')
+
+  if (error) { console.error(error); return }
+
+  state.memberData = {}
+  data.forEach(row => {
+    if (!state.memberData[row.member_idx]) state.memberData[row.member_idx] = {}
+    if (!state.memberData[row.member_idx][row.date]) state.memberData[row.member_idx][row.date] = {}
+    state.memberData[row.member_idx][row.date][row.hour] = true
+  })
 }
 
 // ─── Supabase: 멤버 시간 저장 ───────────────────────────────
@@ -536,7 +546,6 @@ function findSlots() {
   const dateMap = {}
   memberKeys.forEach(mi => {
     Object.keys(state.memberData[mi]).forEach(dateStr => {
-      if (!dateStr.startsWith(state.resultViewMonth)) return
       if (!dateMap[dateStr]) dateMap[dateStr] = {}
       Object.keys(state.memberData[mi][dateStr]).forEach(h => {
         if (!dateMap[dateStr][h]) dateMap[dateStr][h] = []
@@ -590,7 +599,7 @@ function findSlots() {
 // ─── 결과 화면 ───────────────────────────────────────────────
 async function renderResult() {
   showLoading()
-  await loadMonthData(state.resultViewMonth)
+  await loadMonthDataByDate(state.resultViewMonth)
   hideLoading()
 
   // 월 네비게이션
@@ -680,7 +689,7 @@ async function init() {
   document.getElementById('btn-cal-back').addEventListener('click', () => goTo('screen-select-member'))
   document.getElementById('time-save-btn').addEventListener('click', () => saveMemberData(state.currentMemberIdx))
   document.getElementById('btn-time-back').addEventListener('click', () => goTo('screen-calendar'))
-  document.getElementById('btn-result-enter').addEventListener('click', () => goTo('screen-select-member'))
+
   document.getElementById('btn-result-home').addEventListener('click', () => goTo('screen-home'))
 
   // 초기 데이터 로드
