@@ -96,7 +96,7 @@
   .result-badge.partial { background: #EEEDFE; color: #3C3489; }
 
   .member-dots { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
-  .dot { font-size: 18px; line-height: 1; }
+  .dot { font-size: 14px; line-height: 1; }
 
   .section-label { font-size: 11px; color: #8e8e93; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 500; }
   .progress-bar { height: 5px; background: #e5e5ea; border-radius: 99px; overflow: hidden; margin-bottom: 14px; }
@@ -433,7 +433,7 @@ function renderAllDateCards() {
   const wrap = document.getElementById('time-cards-wrap')
   wrap.innerHTML = ''
   const days2 = ['일','월','화','수','목','금','토']
-  let touchStartX = 0, touchStartY = 0, touchStartBtn = null, hasDragged = false
+  let touchStartBtn = null, hasDragged = false
 
   state.selectedDates.forEach(dateStr => {
     const [y, m, d] = dateStr.split('-')
@@ -459,7 +459,7 @@ function renderAllDateCards() {
       btn.textContent = h + '시'
 
       btn.addEventListener('mousedown', e => {
-        e.preventDefault()
+        e.preventDefault()  // 데스크탑: click 억제 + 즉시 토글
         state.isDragging = true
         state.dragMode = !btn.classList.contains('selected')
         toggleCell(btn)
@@ -467,14 +467,16 @@ function renderAllDateCards() {
       btn.addEventListener('mouseover', () => {
         if (state.isDragging) toggleCell(btn, state.dragMode)
       })
-      btn.addEventListener('touchstart', e => {
-        touchStartX = e.touches[0].clientX
-        touchStartY = e.touches[0].clientY
+      btn.addEventListener('touchstart', () => {
         touchStartBtn = btn
         hasDragged = false
         state.isDragging = true
         state.dragMode = !btn.classList.contains('selected')
       }, { passive: true })
+      btn.addEventListener('click', () => {
+        // 모바일 탭: 드래그가 없었을 때만 토글 (드래그 후엔 touchend가 click 억제)
+        if (!hasDragged) toggleCell(btn)
+      })
 
       grid.appendChild(btn)
     })
@@ -491,16 +493,16 @@ function renderAllDateCards() {
           hasDragged = true
           toggleCell(touchStartBtn, state.dragMode)
         } else {
-          return  // 같은 버튼 위 → 스크롤 허용
+          return
         }
       }
       e.preventDefault()
       if (el && el.classList.contains('hour-btn')) toggleCell(el, state.dragMode)
     }, { passive: false })
 
-    // 탭 처리: 드래그가 없었으면 탭으로 토글
-    grid.addEventListener('touchend', () => {
-      if (state.isDragging && touchStartBtn && !hasDragged) toggleCell(touchStartBtn)
+    // 드래그 후 click 이벤트 억제
+    grid.addEventListener('touchend', e => {
+      if (hasDragged) e.preventDefault()
       state.isDragging = false
       hasDragged = false
     })
@@ -534,6 +536,7 @@ function findSlots() {
   const dateMap = {}
   memberKeys.forEach(mi => {
     Object.keys(state.memberData[mi]).forEach(dateStr => {
+      if (!dateStr.startsWith(state.resultViewMonth)) return
       if (!dateMap[dateStr]) dateMap[dateStr] = {}
       Object.keys(state.memberData[mi][dateStr]).forEach(h => {
         if (!dateMap[dateStr][h]) dateMap[dateStr][h] = []
@@ -565,7 +568,7 @@ function findSlots() {
     HOURS.forEach(startH => {
       const needed = [startH, startH + 1]
       if (needed.some(h => h > 23)) return
-      if (seen.has(dateStr + '-' + startH + '-3h')) return
+      if (seen.has(dateStr + '-' + startH + '-3h') || seen.has(dateStr + '-' + (startH - 1) + '-3h')) return
       const common = needed.reduce((acc, h) => {
         const s = new Set(hours[h] || [])
         return acc.filter(m => s.has(m))
