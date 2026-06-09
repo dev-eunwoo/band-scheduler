@@ -42,6 +42,10 @@
     cursor: pointer; margin-top: 8px;
   }
 
+  .seg-ctrl { display: flex; background: #f2f2f7; border-radius: 10px; padding: 2px; gap: 2px; margin-bottom: 12px; }
+  .seg-btn { flex: 1; padding: 9px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; background: transparent; color: #8e8e93; transition: all 0.15s; }
+  .seg-btn.active { background: #fff; color: #1c1c1e; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
   .month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   .month-nav span { font-size: 15px; font-weight: 600; color: #1c1c1e; }
   .nav-btn { background: #f2f2f7; border: none; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 16px; color: #3c3c43; }
@@ -105,12 +109,8 @@
   }
   .result-badge.partial { background: #EEEDFE; color: #3C3489; }
 
-  .member-dots { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
-  .dot {
-    width: 28px; height: 28px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-  }
+  .member-dots { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
+  .dot { font-size: 18px; line-height: 1; }
 
   .section-label { font-size: 11px; color: #8e8e93; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 500; }
   .progress-bar { height: 5px; background: #e5e5ea; border-radius: 99px; overflow: hidden; margin-bottom: 14px; }
@@ -209,6 +209,7 @@
 <!-- 결과 -->
 <div id="screen-result" class="screen">
   <div class="header"><h1>합주 가능 시간</h1><p>2시간 이상 겹치는 시간이에요 (3시간 우선)</p></div>
+  <div id="result-month-tabs"></div>
   <div id="result-progress" class="card" style="margin-bottom:12px"></div>
   <div id="result-list"></div>
   <button class="primary-btn" id="btn-result-enter">다른 멤버 시간 입력</button>
@@ -225,12 +226,12 @@ const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // ─── 멤버 정보 ───────────────────────────────────────────────
 const MEMBERS = [
-  { name: '현빈', role: '보컬',     emoji: '🎤', color: '#7F77DD' },
-  { name: '경현', role: '리드기타', emoji: '🎸', color: '#1D9E75' },
-  { name: '승하', role: '리듬기타', emoji: '🎸', color: '#D85A30' },
-  { name: '하영', role: '베이스',   emoji: '🎸', color: '#D4537E' },
-  { name: '은우', role: '건반',     emoji: '🎹', color: '#378ADD' },
-  { name: '지원', role: '드럼',     emoji: '🥁', color: '#BA7517' },
+  { name: '현빈', role: '보컬',     emoji: '🐱', color: '#7F77DD' },
+  { name: '경현', role: '리드기타', emoji: '🐰', color: '#1D9E75' },
+  { name: '승하', role: '리듬기타', emoji: '🐣', color: '#D85A30' },
+  { name: '하영', role: '베이스',   emoji: '🦊', color: '#D4537E' },
+  { name: '은우', role: '건반',     emoji: '🐹', color: '#378ADD' },
+  { name: '지원', role: '드럼',     emoji: '🐼', color: '#BA7517' },
 ]
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 8) // 8시~23시
@@ -238,6 +239,7 @@ const HOURS = Array.from({ length: 16 }, (_, i) => i + 8) // 8시~23시
 // ─── 앱 상태 ─────────────────────────────────────────────────
 const state = {
   currentMonth: toMonthStr(new Date()),
+  resultViewMonth: toMonthStr(new Date()),
   currentMemberIdx: null,
   selectedDates: [],
   viewMonth: new Date().getMonth(),
@@ -270,11 +272,12 @@ async function goTo(id) {
 }
 
 // ─── Supabase: 이번 달 데이터 로드 ──────────────────────────
-async function loadMonthData() {
+async function loadMonthData(month) {
+  const target = month || state.currentMonth
   const { data, error } = await db
     .from('availabilities')
     .select('member_idx, date, hour')
-    .eq('month', state.currentMonth)
+    .eq('month', target)
 
   if (error) { console.error(error); return }
 
@@ -284,6 +287,17 @@ async function loadMonthData() {
     if (!state.memberData[row.member_idx][row.date]) state.memberData[row.member_idx][row.date] = {}
     state.memberData[row.member_idx][row.date][row.hour] = true
   })
+}
+
+function getResultMonths() {
+  const [y, m] = state.currentMonth.split('-').map(Number)
+  const nextM = m === 12 ? 1 : m + 1
+  const nextY = m === 12 ? y + 1 : y
+  return [state.currentMonth, nextY + '-' + String(nextM).padStart(2, '0')]
+}
+
+function monthLabel(monthStr) {
+  return parseInt(monthStr.split('-')[1]) + '월'
 }
 
 // ─── Supabase: 멤버 시간 저장 ───────────────────────────────
@@ -433,6 +447,7 @@ function renderAllDateCards() {
   const wrap = document.getElementById('time-cards-wrap')
   wrap.innerHTML = ''
   const days2 = ['일','월','화','수','목','금','토']
+  let touchStartX = 0, touchStartY = 0, touchStartCell = null, dragLocked = null
 
   state.selectedDates.forEach(dateStr => {
     const [y, m, d] = dateStr.split('-')
@@ -487,22 +502,42 @@ function renderAllDateCards() {
         if (state.isDragging) toggleCell(cell, state.dragMode)
       })
       cell.addEventListener('touchstart', e => {
-        e.preventDefault()
+        touchStartX = e.touches[0].clientX
+        touchStartY = e.touches[0].clientY
+        touchStartCell = cell
+        dragLocked = null
         state.isDragging = true
         state.dragMode = !cell.classList.contains('selected')
-        toggleCell(cell)
-      }, { passive: false })
-      cell.addEventListener('touchmove', e => {
-        e.preventDefault()
-        const t = e.touches[0]
-        const el2 = document.elementFromPoint(t.clientX, t.clientY)
-        if (el2 && el2.classList.contains('tg-cell')) toggleCell(el2, state.dragMode)
-      }, { passive: false })
+      }, { passive: true })
 
       grid.appendChild(cell)
     })
 
     gridWrap.appendChild(grid)
+
+    gridWrap.addEventListener('touchmove', e => {
+      if (!state.isDragging) return
+      const t = e.touches[0]
+      const absDx = Math.abs(t.clientX - touchStartX)
+      const absDy = Math.abs(t.clientY - touchStartY)
+      if (!dragLocked && (absDx > 6 || absDy > 6)) {
+        const elUnder = document.elementFromPoint(t.clientX, t.clientY)
+        dragLocked = (elUnder && elUnder.classList.contains('tg-cell') && elUnder !== touchStartCell)
+          ? 'select' : 'scroll'
+      }
+      if (dragLocked === 'select') {
+        e.preventDefault()
+        const elUnder = document.elementFromPoint(t.clientX, t.clientY)
+        if (elUnder && elUnder.classList.contains('tg-cell')) toggleCell(elUnder, state.dragMode)
+      }
+    }, { passive: false })
+
+    gridWrap.addEventListener('touchend', () => {
+      if (state.isDragging && dragLocked === null && touchStartCell) toggleCell(touchStartCell)
+      state.isDragging = false
+      dragLocked = null
+    })
+
     card.appendChild(gridWrap)
 
     const hint = document.createElement('p')
@@ -514,7 +549,7 @@ function renderAllDateCards() {
   })
 
   document.addEventListener('mouseup', () => { state.isDragging = false })
-  document.addEventListener('touchend', () => { state.isDragging = false })
+  document.addEventListener('touchend', () => { state.isDragging = false; dragLocked = null })
 }
 
 function toggleCell(cell, forceMode) {
@@ -591,11 +626,26 @@ function findSlots() {
 // ─── 결과 화면 ───────────────────────────────────────────────
 async function renderResult() {
   showLoading()
-  await loadMonthData()
+  await loadMonthData(state.resultViewMonth)
   hideLoading()
 
+  // 월 탭 렌더링
+  const months = getResultMonths()
+  const tabsEl = document.getElementById('result-month-tabs')
+  tabsEl.innerHTML = '<div class="seg-ctrl">' +
+    months.map(mo =>
+      '<button class="seg-btn' + (mo === state.resultViewMonth ? ' active' : '') + '" data-month="' + mo + '">' +
+      monthLabel(mo) + '</button>'
+    ).join('') + '</div>'
+  tabsEl.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      state.resultViewMonth = btn.dataset.month
+      await renderResult()
+    })
+  })
+
   const totalDone = Object.keys(state.memberData).length
-  const [y, m] = state.currentMonth.split('-')
+  const [y, m] = state.resultViewMonth.split('-')
   document.getElementById('result-progress').innerHTML =
     '<div class="section-label">' + y + '년 ' + parseInt(m) + '월 입력 현황</div>' +
     '<div class="progress-bar"><div class="progress-fill" style="width:' + Math.round(totalDone / 6 * 100) + '%"></div></div>' +
@@ -637,7 +687,7 @@ async function renderResult() {
         (s.isAll ? '<span class="result-badge">전원 가능 🎉</span>' : '<span class="result-badge partial">' + s.count + '/' + MEMBERS.length + '명</span>') +
       '</div>' +
       '<div class="member-dots">' +
-        s.members.map(mi => '<div class="dot" style="background:' + MEMBERS[mi].color + '" title="' + MEMBERS[mi].name + '">' + MEMBERS[mi].emoji + '</div>').join('') +
+        s.members.map(mi => '<span class="dot" title="' + MEMBERS[mi].name + '">' + MEMBERS[mi].emoji + '</span>').join('') +
       '</div>'
     list.appendChild(div)
   })
