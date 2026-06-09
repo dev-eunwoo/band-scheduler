@@ -234,7 +234,7 @@ const MEMBERS = [
   { name: '지원', role: '드럼',     emoji: '💜', color: '#BA7517' },
 ]
 
-const HOURS = Array.from({ length: 16 }, (_, i) => i + 8) // 8시~23시
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 12) // 12시~23시
 
 // ─── 앱 상태 ─────────────────────────────────────────────────
 const state = {
@@ -590,7 +590,7 @@ function findSlots() {
     // 3시간 슬롯
     HOURS.forEach(startH => {
       const needed = [startH, startH + 1, startH + 2]
-      if (needed.some(h => h > 22)) return
+      if (needed.some(h => h > 23)) return
       const common = needed.reduce((acc, h) => {
         const s = new Set(hours[h] || [])
         return acc.filter(m => s.has(m))
@@ -603,7 +603,7 @@ function findSlots() {
     // 2시간 슬롯 (3시간 커버된 시작 시간 제외)
     HOURS.forEach(startH => {
       const needed = [startH, startH + 1]
-      if (needed.some(h => h > 22)) return
+      if (needed.some(h => h > 23)) return
       if (seen.has(dateStr + '-' + startH + '-3h')) return
       const common = needed.reduce((acc, h) => {
         const s = new Set(hours[h] || [])
