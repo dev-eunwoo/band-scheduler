@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>합주 스케줄러</title>
+<title>아무런밴드 합주 스케줄러</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -107,9 +107,9 @@
 
   .member-dots { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
   .dot {
-    width: 26px; height: 26px; border-radius: 50%;
+    width: 28px; height: 28px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 9px; font-weight: 700; color: white;
+    font-size: 16px;
   }
 
   .section-label { font-size: 11px; color: #8e8e93; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 500; }
@@ -156,7 +156,7 @@
 <div id="screen-home" class="screen active">
   <div class="header">
     <div style="font-size:36px;margin-bottom:10px">🎸</div>
-    <h1>합주 스케줄러</h1>
+    <h1>아무런밴드 합주 스케줄러</h1>
     <p>가능한 시간을 입력하면<br>겹치는 시간을 자동으로 찾아줘요</p>
   </div>
   <div class="card">
@@ -228,7 +228,7 @@ const MEMBERS = [
   { name: '현빈', role: '보컬',     emoji: '🎤', color: '#7F77DD' },
   { name: '경현', role: '리드기타', emoji: '🎸', color: '#1D9E75' },
   { name: '승하', role: '리듬기타', emoji: '🎸', color: '#D85A30' },
-  { name: '하영', role: '베이스',   emoji: '🎵', color: '#D4537E' },
+  { name: '하영', role: '베이스',   emoji: '🎸', color: '#D4537E' },
   { name: '은우', role: '건반',     emoji: '🎹', color: '#378ADD' },
   { name: '지원', role: '드럼',     emoji: '🥁', color: '#BA7517' },
 ]
@@ -562,7 +562,7 @@ function findSlots() {
       }, [...(hours[needed[0]] || [])])
       if (common.length === 0) return
       const key = dateStr + '-' + startH + '-3h'
-      if (!seen.has(key)) { seen.add(key); slots.push({ dateStr, startH, endH: startH + 3, duration: 3, count: common.length, members: common, isAll: common.length === memberKeys.length }) }
+      if (!seen.has(key)) { seen.add(key); slots.push({ dateStr, startH, endH: startH + 3, duration: 3, count: common.length, members: common, isAll: common.length === MEMBERS.length }) }
     })
 
     // 2시간 슬롯 (3시간 커버된 시작 시간 제외)
@@ -576,7 +576,7 @@ function findSlots() {
       }, [...(hours[needed[0]] || [])])
       if (common.length === 0) return
       const key = dateStr + '-' + startH + '-2h'
-      if (!seen.has(key)) { seen.add(key); slots.push({ dateStr, startH, endH: startH + 2, duration: 2, count: common.length, members: common, isAll: common.length === memberKeys.length }) }
+      if (!seen.has(key)) { seen.add(key); slots.push({ dateStr, startH, endH: startH + 2, duration: 2, count: common.length, members: common, isAll: common.length === MEMBERS.length }) }
     })
   })
 
@@ -634,10 +634,10 @@ async function renderResult() {
             '<div class="result-time">' + s.startH + ':00 – ' + s.endH + ':00</div>' + durationBadge +
           '</div>' +
         '</div>' +
-        (s.isAll ? '<span class="result-badge">전원 가능 🎉</span>' : '<span class="result-badge partial">' + s.count + '/' + Object.keys(state.memberData).length + '명</span>') +
+        (s.isAll ? '<span class="result-badge">전원 가능 🎉</span>' : '<span class="result-badge partial">' + s.count + '/' + MEMBERS.length + '명</span>') +
       '</div>' +
       '<div class="member-dots">' +
-        s.members.map(mi => '<div class="dot" style="background:' + MEMBERS[mi].color + '" title="' + MEMBERS[mi].name + '">' + MEMBERS[mi].name[0] + '</div>').join('') +
+        s.members.map(mi => '<div class="dot" style="background:' + MEMBERS[mi].color + '" title="' + MEMBERS[mi].name + '">' + MEMBERS[mi].emoji + '</div>').join('') +
       '</div>'
     list.appendChild(div)
   })
