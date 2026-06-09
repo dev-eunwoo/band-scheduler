@@ -433,7 +433,7 @@ function renderAllDateCards() {
   const wrap = document.getElementById('time-cards-wrap')
   wrap.innerHTML = ''
   const days2 = ['일','월','화','수','목','금','토']
-  let touchStartX = 0, touchStartY = 0, touchStartBtn = null
+  let touchStartX = 0, touchStartY = 0, touchStartBtn = null, hasDragged = false
 
   state.selectedDates.forEach(dateStr => {
     const [y, m, d] = dateStr.split('-')
@@ -471,6 +471,7 @@ function renderAllDateCards() {
         touchStartX = e.touches[0].clientX
         touchStartY = e.touches[0].clientY
         touchStartBtn = btn
+        hasDragged = false
         state.isDragging = true
         state.dragMode = !btn.classList.contains('selected')
       }, { passive: true })
@@ -480,24 +481,28 @@ function renderAllDateCards() {
 
     grid.addEventListener('contextmenu', e => e.preventDefault())
 
-    // 드래그 선택 (스크롤 충돌 없음)
+    // 드래그 선택: 다른 버튼으로 이동했을 때만 드래그로 확정
     grid.addEventListener('touchmove', e => {
       if (!state.isDragging) return
-      e.preventDefault()
       const t = e.touches[0]
       const el = document.elementFromPoint(t.clientX, t.clientY)
+      if (!hasDragged) {
+        if (el && el.classList.contains('hour-btn') && el !== touchStartBtn) {
+          hasDragged = true
+          toggleCell(touchStartBtn, state.dragMode)
+        } else {
+          return  // 같은 버튼 위 → 스크롤 허용
+        }
+      }
+      e.preventDefault()
       if (el && el.classList.contains('hour-btn')) toggleCell(el, state.dragMode)
     }, { passive: false })
 
-    // 탭 처리: 시작·끝 위치가 가까우면 토글
-    grid.addEventListener('touchend', e => {
-      if (state.isDragging && touchStartBtn) {
-        const touch = e.changedTouches[0]
-        const dx = Math.abs(touch.clientX - touchStartX)
-        const dy = Math.abs(touch.clientY - touchStartY)
-        if (dx < 12 && dy < 12) toggleCell(touchStartBtn)
-      }
+    // 탭 처리: 드래그가 없었으면 탭으로 토글
+    grid.addEventListener('touchend', () => {
+      if (state.isDragging && touchStartBtn && !hasDragged) toggleCell(touchStartBtn)
       state.isDragging = false
+      hasDragged = false
     })
 
     card.appendChild(grid)
@@ -585,19 +590,29 @@ async function renderResult() {
   await loadMonthData(state.resultViewMonth)
   hideLoading()
 
-  // 월 탭 렌더링
-  const months = getResultMonths()
+  // 월 네비게이션
   const tabsEl = document.getElementById('result-month-tabs')
-  tabsEl.innerHTML = '<div class="seg-ctrl">' +
-    months.map(mo =>
-      '<button class="seg-btn' + (mo === state.resultViewMonth ? ' active' : '') + '" data-month="' + mo + '">' +
-      monthLabel(mo) + '</button>'
-    ).join('') + '</div>'
-  tabsEl.querySelectorAll('.seg-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      state.resultViewMonth = btn.dataset.month
-      await renderResult()
-    })
+  const [ry, rm] = state.resultViewMonth.split('-').map(Number)
+  const navLabel = ry !== new Date().getFullYear() ? ry + '년 ' + rm + '월' : rm + '월'
+  tabsEl.innerHTML =
+    '<div class="month-nav" style="margin-bottom:12px">' +
+      '<button class="nav-btn" id="btn-result-prev">‹</button>' +
+      '<span>' + navLabel + '</span>' +
+      '<button class="nav-btn" id="btn-result-next">›</button>' +
+    '</div>'
+  tabsEl.querySelector('#btn-result-prev').addEventListener('click', () => {
+    const [y, m] = state.resultViewMonth.split('-').map(Number)
+    const pm = m === 1 ? 12 : m - 1
+    const py = m === 1 ? y - 1 : y
+    state.resultViewMonth = py + '-' + String(pm).padStart(2, '0')
+    renderResult()
+  })
+  tabsEl.querySelector('#btn-result-next').addEventListener('click', () => {
+    const [y, m] = state.resultViewMonth.split('-').map(Number)
+    const nm = m === 12 ? 1 : m + 1
+    const ny = m === 12 ? y + 1 : y
+    state.resultViewMonth = ny + '-' + String(nm).padStart(2, '0')
+    renderResult()
   })
 
   const totalDone = Object.keys(state.memberData).length
