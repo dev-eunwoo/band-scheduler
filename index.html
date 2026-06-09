@@ -42,10 +42,6 @@
     cursor: pointer; margin-top: 8px;
   }
 
-  .seg-ctrl { display: flex; background: #f2f2f7; border-radius: 10px; padding: 2px; gap: 2px; margin-bottom: 12px; }
-  .seg-btn { flex: 1; padding: 9px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; background: transparent; color: #8e8e93; transition: all 0.15s; }
-  .seg-btn.active { background: #fff; color: #1c1c1e; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-
   .month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   .month-nav span { font-size: 15px; font-weight: 600; color: #1c1c1e; }
   .nav-btn { background: #f2f2f7; border: none; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 16px; color: #3c3c43; }
@@ -187,6 +183,7 @@
     <h1 id="time-screen-title">시간 입력</h1>
     <p>가능한 시간대를 탭 또는 드래그로 선택하세요</p>
   </div>
+  <div id="time-month-nav"></div>
   <div id="time-cards-wrap"></div>
   <button class="primary-btn" id="time-save-btn">저장하기 ✓</button>
   <button class="ghost-btn" id="btn-time-back">← 날짜 다시 선택</button>
@@ -204,19 +201,18 @@
 </div>
 
 <script>
-// ─── Supabase 설정 ───────────────────────────────────────────
+// ─── 설정 ────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://ppyagdblitedffvaaywu.supabase.co'
 const SUPABASE_ANON_KEY = 'sb_publishable_jwuW8cPERQ2CCPTZtiYT1w_bSQAl2km'
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-// ─── 멤버 정보 ───────────────────────────────────────────────
 const MEMBERS = [
-  { name: '현빈', role: '보컬',     emoji: '❤️', color: '#7F77DD' },
-  { name: '경현', role: '리드기타', emoji: '🧡', color: '#1D9E75' },
-  { name: '승하', role: '리듬기타', emoji: '💛', color: '#D85A30' },
-  { name: '하영', role: '베이스',   emoji: '💚', color: '#D4537E' },
-  { name: '은우', role: '건반',     emoji: '💙', color: '#378ADD' },
-  { name: '지원', role: '드럼',     emoji: '💜', color: '#BA7517' },
+  { name: '현빈', role: '보컬',     emoji: '❤️' },
+  { name: '경현', role: '리드기타', emoji: '🧡' },
+  { name: '승하', role: '리듬기타', emoji: '💛' },
+  { name: '하영', role: '베이스',   emoji: '💚' },
+  { name: '은우', role: '건반',     emoji: '💙' },
+  { name: '지원', role: '드럼',     emoji: '💜' },
 ]
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 12) // 12시~23시
@@ -225,6 +221,7 @@ const HOURS = Array.from({ length: 12 }, (_, i) => i + 12) // 12시~23시
 const state = {
   currentMonth: toMonthStr(new Date()),
   resultViewMonth: toMonthStr(new Date()),
+  timeViewMonth: toMonthStr(new Date()),
   currentMemberIdx: null,
   selectedDates: [],
   viewMonth: new Date().getMonth(),
@@ -234,8 +231,22 @@ const state = {
   dragMode: true,
 }
 
+// ─── 유틸 ────────────────────────────────────────────────────
 function toMonthStr(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+}
+
+function monthLabel(monthStr) {
+  const [y, m] = monthStr.split('-').map(Number)
+  return y !== new Date().getFullYear() ? y + '년 ' + m + '월' : m + '월'
+}
+
+function stepMonth(monthStr, dir) {
+  const [y, m] = monthStr.split('-').map(Number)
+  const nm = m + dir
+  if (nm > 12) return (y + 1) + '-01'
+  if (nm < 1) return (y - 1) + '-12'
+  return y + '-' + String(nm).padStart(2, '0')
 }
 
 // ─── 로딩 / 토스트 ───────────────────────────────────────────
@@ -253,16 +264,16 @@ async function goTo(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'))
   document.getElementById(id).classList.add('active')
   if (id === 'screen-home') await refreshHome()
+  if (id === 'screen-select-member') renderMemberGrid()
   if (id === 'screen-result') await renderResult()
 }
 
-// ─── Supabase: 이번 달 데이터 로드 ──────────────────────────
-async function loadMonthData(month) {
-  const target = month || state.currentMonth
+// ─── Supabase: 플래닝 라운드 기준 로드 (홈 현황용) ──────────
+async function loadMonthData() {
   const { data, error } = await db
     .from('availabilities')
     .select('member_idx, date, hour')
-    .eq('month', target)
+    .eq('month', state.currentMonth)
 
   if (error) { console.error(error); return }
 
@@ -274,11 +285,7 @@ async function loadMonthData(month) {
   })
 }
 
-function monthLabel(monthStr) {
-  return parseInt(monthStr.split('-')[1]) + '월'
-}
-
-// ─── 결과용: 날짜(date) 기준으로 해당 월 데이터 로드 ────────
+// ─── Supabase: 날짜 기준 로드 (결과 화면용) ─────────────────
 async function loadMonthDataByDate(month) {
   const { data, error } = await db
     .from('availabilities')
@@ -300,9 +307,7 @@ async function loadMonthDataByDate(month) {
 async function saveMemberData(memberIdx) {
   showLoading()
   try {
-    await db
-      .from('availabilities')
-      .delete()
+    await db.from('availabilities').delete()
       .eq('month', state.currentMonth)
       .eq('member_idx', memberIdx)
 
@@ -377,39 +382,39 @@ function renderCalendar() {
   grid.innerHTML = ''
 
   const dayLabels = ['일','월','화','수','목','금','토']
-  for (let i = 0; i < dayLabels.length; i++) {
+  dayLabels.forEach((label, i) => {
     const el = document.createElement('div')
     el.className = 'cal-day-label'
     el.style.color = i === 0 ? '#ff3b30' : i === 6 ? '#007aff' : ''
-    el.textContent = dayLabels[i]
+    el.textContent = label
     grid.appendChild(el)
-  }
+  })
 
   const first = new Date(state.viewYear, state.viewMonth, 1).getDay()
   const days = new Date(state.viewYear, state.viewMonth + 1, 0).getDate()
-  const today = new Date()
+  const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
 
   for (let i = 0; i < first; i++) {
-    const el = document.createElement('div'); el.className = 'cal-day empty'; grid.appendChild(el)
+    const el = document.createElement('div')
+    el.className = 'cal-day empty'
+    grid.appendChild(el)
   }
   for (let d = 1; d <= days; d++) {
-    const el = document.createElement('div')
     const dateStr = state.viewYear + '-' + String(state.viewMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
     const dow = new Date(state.viewYear, state.viewMonth, d).getDay()
-    const isPast = new Date(state.viewYear, state.viewMonth, d) < new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const isSelected = state.selectedDates.includes(dateStr)
-    const hasData = state.memberData[state.currentMemberIdx]?.[dateStr]
+    const isPast = new Date(state.viewYear, state.viewMonth, d) < today
 
+    const el = document.createElement('div')
     el.className = 'cal-day' +
       (isPast ? ' past' : '') +
-      (isSelected ? ' selected' : '') +
-      (hasData ? ' has-data' : '') +
+      (state.selectedDates.includes(dateStr) ? ' selected' : '') +
+      (state.memberData[state.currentMemberIdx]?.[dateStr] ? ' has-data' : '') +
       (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '')
     el.textContent = d
     if (!isPast) el.addEventListener('click', () => toggleDate(dateStr, el))
     grid.appendChild(el)
   }
-  updateCalBtn()
+  document.getElementById('cal-next-btn').disabled = state.selectedDates.length === 0
 }
 
 function toggleDate(dateStr, el) {
@@ -417,10 +422,6 @@ function toggleDate(dateStr, el) {
   if (idx >= 0) { state.selectedDates.splice(idx, 1); el.classList.remove('selected') }
   else { state.selectedDates.push(dateStr); el.classList.add('selected') }
   state.selectedDates.sort()
-  updateCalBtn()
-}
-
-function updateCalBtn() {
   document.getElementById('cal-next-btn').disabled = state.selectedDates.length === 0
 }
 
@@ -431,23 +432,49 @@ function changeMonth(dir) {
   renderCalendar()
 }
 
-// ─── 시간 입력 (스크롤 방식) ────────────────────────────────
+// ─── 시간 입력 ───────────────────────────────────────────────
 function goToTimeInput() {
   document.getElementById('time-screen-title').textContent = MEMBERS[state.currentMemberIdx].name + '의 가능한 시간'
-  renderAllDateCards()
+  const months = [...new Set(state.selectedDates.map(d => d.slice(0, 7)))].sort()
+  state.timeViewMonth = months[0] || state.currentMonth
+  renderTimeScreen()
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'))
   document.getElementById('screen-time').classList.add('active')
 }
 
-function renderAllDateCards() {
+function renderTimeScreen() {
+  const months = [...new Set(state.selectedDates.map(d => d.slice(0, 7)))].sort()
+  const idx = months.indexOf(state.timeViewMonth)
+  const hasPrev = idx > 0
+  const hasNext = idx < months.length - 1
+
+  const navEl = document.getElementById('time-month-nav')
+  navEl.innerHTML =
+    '<div class="month-nav" style="margin-bottom:4px">' +
+      '<button class="nav-btn" id="btn-time-prev"' + (hasPrev ? '' : ' disabled style="opacity:0.3;cursor:default"') + '>‹</button>' +
+      '<span>' + monthLabel(state.timeViewMonth) + '</span>' +
+      '<button class="nav-btn" id="btn-time-next"' + (hasNext ? '' : ' disabled style="opacity:0.3;cursor:default"') + '>›</button>' +
+    '</div>'
+
+  if (hasPrev) navEl.querySelector('#btn-time-prev').addEventListener('click', () => {
+    state.timeViewMonth = months[idx - 1]; renderTimeScreen()
+  })
+  if (hasNext) navEl.querySelector('#btn-time-next').addEventListener('click', () => {
+    state.timeViewMonth = months[idx + 1]; renderTimeScreen()
+  })
+
+  renderAllDateCards(state.selectedDates.filter(d => d.startsWith(state.timeViewMonth)))
+}
+
+function renderAllDateCards(dates) {
   const wrap = document.getElementById('time-cards-wrap')
   wrap.innerHTML = ''
-  const days2 = ['일','월','화','수','목','금','토']
+  const DAY_LABELS = ['일','월','화','수','목','금','토']
   let touchStartBtn = null, hasDragged = false
 
-  state.selectedDates.forEach(dateStr => {
+  dates.forEach(dateStr => {
     const [y, m, d] = dateStr.split('-')
-    const dow = days2[new Date(parseInt(y), parseInt(m) - 1, parseInt(d)).getDay()]
+    const dow = DAY_LABELS[new Date(parseInt(y), parseInt(m) - 1, parseInt(d)).getDay()]
     const existing = state.memberData[state.currentMemberIdx]?.[dateStr] || {}
 
     const card = document.createElement('div')
@@ -469,7 +496,7 @@ function renderAllDateCards() {
       btn.textContent = h + '시'
 
       btn.addEventListener('mousedown', e => {
-        e.preventDefault()  // 데스크탑: click 억제 + 즉시 토글
+        e.preventDefault()
         state.isDragging = true
         state.dragMode = !btn.classList.contains('selected')
         toggleCell(btn)
@@ -484,7 +511,6 @@ function renderAllDateCards() {
         state.dragMode = !btn.classList.contains('selected')
       }, { passive: true })
       btn.addEventListener('click', () => {
-        // 모바일 탭: 드래그가 없었을 때만 토글 (드래그 후엔 touchend가 click 억제)
         if (!hasDragged) toggleCell(btn)
       })
 
@@ -493,11 +519,9 @@ function renderAllDateCards() {
 
     grid.addEventListener('contextmenu', e => e.preventDefault())
 
-    // 드래그 선택: 다른 버튼으로 이동했을 때만 드래그로 확정
     grid.addEventListener('touchmove', e => {
       if (!state.isDragging) return
-      const t = e.touches[0]
-      const el = document.elementFromPoint(t.clientX, t.clientY)
+      const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)
       if (!hasDragged) {
         if (el && el.classList.contains('hour-btn') && el !== touchStartBtn) {
           hasDragged = true
@@ -510,7 +534,6 @@ function renderAllDateCards() {
       if (el && el.classList.contains('hour-btn')) toggleCell(el, state.dragMode)
     }, { passive: false })
 
-    // 드래그 후 click 이벤트 억제
     grid.addEventListener('touchend', e => {
       if (hasDragged) e.preventDefault()
       state.isDragging = false
@@ -520,9 +543,6 @@ function renderAllDateCards() {
     card.appendChild(grid)
     wrap.appendChild(card)
   })
-
-  document.addEventListener('mouseup', () => { state.isDragging = false })
-  document.addEventListener('touchend', () => { state.isDragging = false })
 }
 
 function toggleCell(cell, forceMode) {
@@ -564,27 +584,27 @@ function findSlots() {
     HOURS.forEach(startH => {
       const needed = [startH, startH + 1, startH + 2]
       if (needed.some(h => h > 23)) return
-      const common = needed.reduce((acc, h) => {
-        const s = new Set(hours[h] || [])
-        return acc.filter(m => s.has(m))
-      }, [...(hours[needed[0]] || [])])
+      const common = needed.reduce((acc, h) => acc.filter(mi => new Set(hours[h] || []).has(mi)), [...(hours[needed[0]] || [])])
       if (common.length === 0) return
       const key = dateStr + '-' + startH + '-3h'
-      if (!seen.has(key)) { seen.add(key); slots.push({ dateStr, startH, endH: startH + 3, duration: 3, count: common.length, members: common, isAll: common.length === MEMBERS.length }) }
+      if (!seen.has(key)) {
+        seen.add(key)
+        slots.push({ dateStr, startH, endH: startH + 3, duration: 3, count: common.length, members: common, isAll: common.length === MEMBERS.length })
+      }
     })
 
-    // 2시간 슬롯 (3시간 커버된 시작 시간 제외)
+    // 2시간 슬롯 (3시간 슬롯에 포함되는 경우 제외)
     HOURS.forEach(startH => {
       const needed = [startH, startH + 1]
       if (needed.some(h => h > 23)) return
       if (seen.has(dateStr + '-' + startH + '-3h') || seen.has(dateStr + '-' + (startH - 1) + '-3h')) return
-      const common = needed.reduce((acc, h) => {
-        const s = new Set(hours[h] || [])
-        return acc.filter(m => s.has(m))
-      }, [...(hours[needed[0]] || [])])
+      const common = needed.reduce((acc, h) => acc.filter(mi => new Set(hours[h] || []).has(mi)), [...(hours[needed[0]] || [])])
       if (common.length === 0) return
       const key = dateStr + '-' + startH + '-2h'
-      if (!seen.has(key)) { seen.add(key); slots.push({ dateStr, startH, endH: startH + 2, duration: 2, count: common.length, members: common, isAll: common.length === MEMBERS.length }) }
+      if (!seen.has(key)) {
+        seen.add(key)
+        slots.push({ dateStr, startH, endH: startH + 2, duration: 2, count: common.length, members: common, isAll: common.length === MEMBERS.length })
+      }
     })
   })
 
@@ -604,29 +624,22 @@ async function renderResult() {
 
   // 월 네비게이션
   const tabsEl = document.getElementById('result-month-tabs')
-  const [ry, rm] = state.resultViewMonth.split('-').map(Number)
-  const navLabel = ry !== new Date().getFullYear() ? ry + '년 ' + rm + '월' : rm + '월'
   tabsEl.innerHTML =
     '<div class="month-nav" style="margin-bottom:12px">' +
       '<button class="nav-btn" id="btn-result-prev">‹</button>' +
-      '<span>' + navLabel + '</span>' +
+      '<span>' + monthLabel(state.resultViewMonth) + '</span>' +
       '<button class="nav-btn" id="btn-result-next">›</button>' +
     '</div>'
   tabsEl.querySelector('#btn-result-prev').addEventListener('click', () => {
-    const [y, m] = state.resultViewMonth.split('-').map(Number)
-    const pm = m === 1 ? 12 : m - 1
-    const py = m === 1 ? y - 1 : y
-    state.resultViewMonth = py + '-' + String(pm).padStart(2, '0')
+    state.resultViewMonth = stepMonth(state.resultViewMonth, -1)
     renderResult()
   })
   tabsEl.querySelector('#btn-result-next').addEventListener('click', () => {
-    const [y, m] = state.resultViewMonth.split('-').map(Number)
-    const nm = m === 12 ? 1 : m + 1
-    const ny = m === 12 ? y + 1 : y
-    state.resultViewMonth = ny + '-' + String(nm).padStart(2, '0')
+    state.resultViewMonth = stepMonth(state.resultViewMonth, 1)
     renderResult()
   })
 
+  // 입력 현황
   const totalDone = Object.keys(state.memberData).length
   const [y, m] = state.resultViewMonth.split('-')
   document.getElementById('result-progress').innerHTML =
@@ -638,22 +651,23 @@ async function renderResult() {
       mem.emoji + ' ' + mem.name + (state.memberData[i] ? ' ✓' : '') + '</span>'
     ).join('') + '</div>'
 
+  // 슬롯 목록
   const slots = findSlots()
   const list = document.getElementById('result-list')
 
   if (slots.length === 0) {
     list.innerHTML =
       '<div class="card" style="text-align:center;padding:2rem">' +
-      '<div style="font-size:36px;margin-bottom:10px">🤔</div>' +
+      '<div style="font-size:26px;margin-bottom:10px">🤔</div>' +
       '<p style="color:#8e8e93;line-height:1.6">아직 겹치는 시간이 없어요<br>멤버들이 시간을 입력하면<br>자동으로 나타나요!</p></div>'
     return
   }
 
-  const days2 = ['일','월','화','수','목','금','토']
+  const DAY_LABELS = ['일','월','화','수','목','금','토']
   list.innerHTML = ''
   slots.slice(0, 8).forEach(s => {
     const [sy, sm, sd] = s.dateStr.split('-')
-    const dw = days2[new Date(parseInt(sy), parseInt(sm) - 1, parseInt(sd)).getDay()]
+    const dw = DAY_LABELS[new Date(parseInt(sy), parseInt(sm) - 1, parseInt(sd)).getDay()]
     const durationBadge = s.duration === 3
       ? '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#f2f2f7;color:#8e8e93;margin-left:6px">3시간</span>'
       : '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#FFF4E5;color:#B85C00;margin-left:6px">2시간</span>'
@@ -667,7 +681,9 @@ async function renderResult() {
             '<div class="result-time">' + s.startH + ':00 – ' + s.endH + ':00</div>' + durationBadge +
           '</div>' +
         '</div>' +
-        (s.isAll ? '<span class="result-badge">전원 가능 🎉</span>' : '<span class="result-badge partial">' + s.count + '/' + MEMBERS.length + '명</span>') +
+        (s.isAll
+          ? '<span class="result-badge">전원 가능 🎉</span>'
+          : '<span class="result-badge partial">' + s.count + '/' + MEMBERS.length + '명</span>') +
       '</div>' +
       '<div class="member-dots">' +
         s.members.map(mi => '<span class="dot" title="' + MEMBERS[mi].name + '">' + MEMBERS[mi].emoji + '</span>').join('') +
@@ -678,7 +694,6 @@ async function renderResult() {
 
 // ─── 초기화 ──────────────────────────────────────────────────
 async function init() {
-  // 버튼 이벤트 등록
   document.getElementById('btn-home-enter').addEventListener('click', () => goTo('screen-select-member'))
   document.getElementById('btn-home-result').addEventListener('click', () => goTo('screen-result'))
   document.getElementById('member-next-btn').addEventListener('click', () => memberSelected())
@@ -689,18 +704,13 @@ async function init() {
   document.getElementById('btn-cal-back').addEventListener('click', () => goTo('screen-select-member'))
   document.getElementById('time-save-btn').addEventListener('click', () => saveMemberData(state.currentMemberIdx))
   document.getElementById('btn-time-back').addEventListener('click', () => goTo('screen-calendar'))
-
   document.getElementById('btn-result-home').addEventListener('click', () => goTo('screen-home'))
 
-  // 초기 데이터 로드
-  showLoading()
-  await loadMonthData()
-  hideLoading()
+  document.addEventListener('mouseup', () => { state.isDragging = false })
+  document.addEventListener('touchend', () => { state.isDragging = false })
 
+  await refreshHome()
   renderMemberGrid()
-  const [y, m] = state.currentMonth.split('-')
-  document.getElementById('home-month').textContent = y + '년 ' + parseInt(m) + '월'
-  document.getElementById('home-progress').textContent = Object.keys(state.memberData).length + ' / 6명'
 }
 
 init()
