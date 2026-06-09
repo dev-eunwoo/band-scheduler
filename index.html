@@ -176,8 +176,8 @@
     <div class="info-row"><span style="color:#8e8e93">합주 시간</span><span style="font-weight:600">2시간 또는 3시간</span></div>
     <div class="info-row"><span style="color:#8e8e93">입력 완료</span><span id="home-progress" style="font-weight:600;color:#534AB7">0 / 6명</span></div>
   </div>
-  <button class="primary-btn" onclick="goTo('screen-select-member')">내 가능 시간 입력하기</button>
-  <button class="ghost-btn" onclick="goTo('screen-result')">합주 가능 시간 보기 →</button>
+  <button class="primary-btn" id="btn-home-enter">내 가능 시간 입력하기</button>
+  <button class="ghost-btn" id="btn-home-result">합주 가능 시간 보기 →</button>
 </div>
 
 <!-- 멤버 선택 -->
@@ -187,8 +187,8 @@
     <div class="section-label">멤버 선택</div>
     <div class="member-grid" id="member-grid"></div>
   </div>
-  <button class="primary-btn" id="member-next-btn" onclick="memberSelected()" disabled>선택하고 날짜 고르기</button>
-  <button class="ghost-btn" onclick="goTo('screen-home')">← 홈으로</button>
+  <button class="primary-btn" id="member-next-btn" disabled>선택하고 날짜 고르기</button>
+  <button class="ghost-btn" id="btn-member-back">← 홈으로</button>
 </div>
 
 <!-- 캘린더 -->
@@ -196,31 +196,25 @@
   <div class="header"><h1 id="cal-member-name">날짜 선택</h1><p>가능한 날짜를 탭해서 선택하세요 (복수 선택 가능)</p></div>
   <div class="card">
     <div class="month-nav">
-      <button class="nav-btn" onclick="changeMonth(-1)">‹</button>
+      <button class="nav-btn" id="btn-cal-prev">‹</button>
       <span id="month-label"></span>
-      <button class="nav-btn" onclick="changeMonth(1)">›</button>
+      <button class="nav-btn" id="btn-cal-next">›</button>
     </div>
     <div class="cal-grid" id="cal-grid"></div>
   </div>
-  <button class="primary-btn" id="cal-next-btn" onclick="goToTimeInput()" disabled>선택한 날짜 시간 입력하기</button>
-  <button class="ghost-btn" onclick="goTo('screen-select-member')">← 뒤로</button>
+  <button class="primary-btn" id="cal-next-btn" disabled>선택한 날짜 시간 입력하기</button>
+  <button class="ghost-btn" id="btn-cal-back">← 뒤로</button>
 </div>
 
 <!-- 시간 입력 -->
 <div id="screen-time" class="screen">
   <div class="header">
-    <h1 id="time-date-label">시간 입력</h1>
-    <p id="time-date-sub">드래그해서 가능한 시간대를 표시하세요</p>
+    <h1 id="time-screen-title">시간 입력</h1>
+    <p>가능한 시간대를 탭 또는 드래그로 선택하세요</p>
   </div>
-  <div class="card">
-    <div class="time-grid-wrap">
-      <div class="time-grid" id="time-grid"></div>
-    </div>
-    <p style="font-size:11px;color:#aeaeb2;margin-top:10px;text-align:center">탭 또는 드래그로 선택 · 스크롤로 시간대 이동</p>
-  </div>
-  <div class="pagination" id="time-pagination"></div>
-  <button class="primary-btn" id="time-next-btn" onclick="nextDateOrFinish()">다음 날짜 →</button>
-  <button class="ghost-btn" onclick="goTo('screen-calendar')">← 날짜 다시 선택</button>
+  <div id="time-cards-wrap"></div>
+  <button class="primary-btn" id="time-next-btn">저장하기 ✓</button>
+  <button class="ghost-btn" id="btn-time-back">← 날짜 다시 선택</button>
 </div>
 
 <!-- 결과 -->
@@ -228,8 +222,8 @@
   <div class="header"><h1>합주 가능 시간</h1><p>2시간 이상 겹치는 시간이에요 (3시간 우선)</p></div>
   <div id="result-progress" class="card" style="margin-bottom:12px"></div>
   <div id="result-list"></div>
-  <button class="primary-btn" onclick="goTo('screen-select-member')">다른 멤버 시간 입력</button>
-  <button class="ghost-btn" onclick="goTo('screen-home')">← 홈으로</button>
+  <button class="primary-btn" id="btn-result-enter">다른 멤버 시간 입력</button>
+  <button class="ghost-btn" id="btn-result-home">← 홈으로</button>
 </div>
 
 </div>
@@ -453,81 +447,109 @@ function changeMonth(dir) {
   renderCalendar()
 }
 
-// ─── 시간 입력 ───────────────────────────────────────────────
+// ─── 시간 입력 (스크롤 방식) ────────────────────────────────
 function goToTimeInput() {
-  state.currentDateIdx = 0
-  renderTimeGrid()
+  const m = MEMBERS[state.currentMemberIdx]
+  document.getElementById('time-screen-title').textContent = m.name + '의 가능한 시간'
+  renderAllDateCards()
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'))
   document.getElementById('screen-time').classList.add('active')
+  // 저장 버튼 이벤트 (중복 방지)
+  const btn = document.getElementById('time-next-btn')
+  btn.replaceWith(btn.cloneNode(true))
+  document.getElementById('time-next-btn').addEventListener('click', () => saveMemberData(state.currentMemberIdx))
 }
 
-function renderTimeGrid() {
-  const dateStr = state.selectedDates[state.currentDateIdx]
-  const [y, m, d] = dateStr.split('-')
+function renderAllDateCards() {
+  const wrap = document.getElementById('time-cards-wrap')
+  wrap.innerHTML = ''
   const days2 = ['일','월','화','수','목','금','토']
-  const dow = days2[new Date(parseInt(y), parseInt(m) - 1, parseInt(d)).getDay()]
 
-  document.getElementById('time-date-label').textContent = parseInt(m) + '/' + parseInt(d) + ' (' + dow + ')'
-  document.getElementById('time-date-sub').textContent =
-    (state.currentDateIdx + 1) + ' / ' + state.selectedDates.length + '번째 날짜 · 드래그로 선택'
+  state.selectedDates.forEach(dateStr => {
+    const [y, m, d] = dateStr.split('-')
+    const dow = days2[new Date(parseInt(y), parseInt(m) - 1, parseInt(d)).getDay()]
+    const existing = state.memberData[state.currentMemberIdx]?.[dateStr] || {}
 
-  const existing = state.memberData[state.currentMemberIdx]?.[dateStr] || {}
-  const grid = document.getElementById('time-grid')
-  grid.innerHTML = ''
-  grid.style.setProperty('--time-cols', HOURS.length)
+    // 날짜 카드
+    const card = document.createElement('div')
+    card.className = 'card'
+    card.style.marginBottom = '12px'
 
-  // 헤더행
-  const corner = document.createElement('div')
-  corner.className = 'tg-header'
-  grid.appendChild(corner)
-  HOURS.forEach(h => {
-    const el = document.createElement('div')
-    el.className = 'tg-header'
-    el.textContent = h + '시'
-    grid.appendChild(el)
-  })
+    // 날짜 라벨
+    const dateLabel = document.createElement('div')
+    dateLabel.style.cssText = 'font-size:14px;font-weight:600;color:#1c1c1e;margin-bottom:10px'
+    dateLabel.textContent = parseInt(m) + '월 ' + parseInt(d) + '일 (' + dow + ')'
+    card.appendChild(dateLabel)
 
-  // 데이터행
-  const label = document.createElement('div')
-  label.className = 'tg-label'; label.textContent = '가능'
-  grid.appendChild(label)
+    // 그리드 래퍼
+    const wrap2 = document.createElement('div')
+    wrap2.className = 'time-grid-wrap'
 
-  HOURS.forEach(h => {
-    const cell = document.createElement('div')
-    cell.className = 'tg-cell' + (existing[h] ? ' selected' : '')
-    cell.dataset.hour = h
-    cell.dataset.date = dateStr
+    const grid = document.createElement('div')
+    grid.className = 'time-grid'
+    grid.style.setProperty('--time-cols', HOURS.length)
 
-    cell.addEventListener('mousedown', e => {
-      e.preventDefault()
-      state.isDragging = true
-      state.dragMode = !cell.classList.contains('selected')
-      toggleCell(cell)
+    // 헤더행
+    const corner = document.createElement('div')
+    corner.className = 'tg-header'
+    grid.appendChild(corner)
+    HOURS.forEach(h => {
+      const el = document.createElement('div')
+      el.className = 'tg-header'
+      el.textContent = h + '시'
+      grid.appendChild(el)
     })
-    cell.addEventListener('mouseover', () => {
-      if (state.isDragging) toggleCell(cell, state.dragMode)
-    })
-    cell.addEventListener('touchstart', e => {
-      e.preventDefault()
-      state.isDragging = true
-      state.dragMode = !cell.classList.contains('selected')
-      toggleCell(cell)
-    }, { passive: false })
-    cell.addEventListener('touchmove', e => {
-      e.preventDefault()
-      const t = e.touches[0]
-      const el2 = document.elementFromPoint(t.clientX, t.clientY)
-      if (el2?.classList.contains('tg-cell')) toggleCell(el2, state.dragMode)
-    }, { passive: false })
 
-    grid.appendChild(cell)
+    // 데이터행
+    const rowLabel = document.createElement('div')
+    rowLabel.className = 'tg-label'
+    rowLabel.textContent = '가능'
+    grid.appendChild(rowLabel)
+
+    HOURS.forEach(h => {
+      const cell = document.createElement('div')
+      cell.className = 'tg-cell' + (existing[h] ? ' selected' : '')
+      cell.dataset.hour = h
+      cell.dataset.date = dateStr
+
+      cell.addEventListener('mousedown', e => {
+        e.preventDefault()
+        state.isDragging = true
+        state.dragMode = !cell.classList.contains('selected')
+        toggleCell(cell)
+      })
+      cell.addEventListener('mouseover', () => {
+        if (state.isDragging) toggleCell(cell, state.dragMode)
+      })
+      cell.addEventListener('touchstart', e => {
+        e.preventDefault()
+        state.isDragging = true
+        state.dragMode = !cell.classList.contains('selected')
+        toggleCell(cell)
+      }, { passive: false })
+      cell.addEventListener('touchmove', e => {
+        e.preventDefault()
+        const t = e.touches[0]
+        const el2 = document.elementFromPoint(t.clientX, t.clientY)
+        if (el2?.classList.contains('tg-cell')) toggleCell(el2, state.dragMode)
+      }, { passive: false })
+
+      grid.appendChild(cell)
+    })
+
+    wrap2.appendChild(grid)
+    card.appendChild(wrap2)
+
+    const hint = document.createElement('p')
+    hint.style.cssText = 'font-size:11px;color:#aeaeb2;margin-top:8px;text-align:center'
+    hint.textContent = '탭 또는 드래그로 선택'
+    card.appendChild(hint)
+
+    wrap.appendChild(card)
   })
 
   document.addEventListener('mouseup', () => { state.isDragging = false })
   document.addEventListener('touchend', () => { state.isDragging = false })
-
-  renderPagination()
-  updateTimeBtn()
 }
 
 function toggleCell(cell, forceMode) {
@@ -543,29 +565,7 @@ function toggleCell(cell, forceMode) {
   else delete state.memberData[state.currentMemberIdx][dateStr][h]
 }
 
-function renderPagination() {
-  const wrap = document.getElementById('time-pagination')
-  wrap.innerHTML = ''
-  state.selectedDates.forEach((_, i) => {
-    const dot = document.createElement('div')
-    dot.className = 'page-dot' + (i === state.currentDateIdx ? ' active' : '')
-    dot.onclick = () => { state.currentDateIdx = i; renderTimeGrid() }
-    wrap.appendChild(dot)
-  })
-}
-
-function updateTimeBtn() {
-  const btn = document.getElementById('time-next-btn')
-  if (state.currentDateIdx < state.selectedDates.length - 1) {
-    btn.textContent = '다음 날짜 →'
-    btn.onclick = () => { state.currentDateIdx++; renderTimeGrid() }
-  } else {
-    btn.textContent = '저장하기 ✓'
-    btn.onclick = () => saveMemberData(state.currentMemberIdx)
-  }
-}
-
-function nextDateOrFinish() {} // updateTimeBtn에서 직접 처리
+function nextDateOrFinish() {} // 사용 안 함
 
 // ─── 결과 계산 ───────────────────────────────────────────────
 function findSlots() {
@@ -705,6 +705,19 @@ async function renderResult() {
 
 // ─── 초기화 ──────────────────────────────────────────────────
 async function init() {
+  // 버튼 이벤트 등록
+  document.getElementById('btn-home-enter').addEventListener('click', () => goTo('screen-select-member'))
+  document.getElementById('btn-home-result').addEventListener('click', () => goTo('screen-result'))
+  document.getElementById('member-next-btn').addEventListener('click', () => memberSelected())
+  document.getElementById('btn-member-back').addEventListener('click', () => goTo('screen-home'))
+  document.getElementById('btn-cal-prev').addEventListener('click', () => changeMonth(-1))
+  document.getElementById('btn-cal-next').addEventListener('click', () => changeMonth(1))
+  document.getElementById('cal-next-btn').addEventListener('click', () => goToTimeInput())
+  document.getElementById('btn-cal-back').addEventListener('click', () => goTo('screen-select-member'))
+  document.getElementById('btn-time-back').addEventListener('click', () => goTo('screen-calendar'))
+  document.getElementById('btn-result-enter').addEventListener('click', () => goTo('screen-select-member'))
+  document.getElementById('btn-result-home').addEventListener('click', () => goTo('screen-home'))
+
   showLoading()
   await loadMonthData()
   hideLoading()
