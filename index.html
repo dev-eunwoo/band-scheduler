@@ -125,6 +125,13 @@
     animation: spin 0.7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  #time-save-btn {
+    position: sticky;
+    bottom: 1rem;
+    box-shadow: 0 4px 16px rgba(83, 74, 183, 0.4);
+    z-index: 10;
+  }
 </style>
 </head>
 <body>
@@ -142,7 +149,7 @@
     <p>가능한 시간을 입력하면<br>겹치는 시간을 자동으로 찾아줘요</p>
   </div>
   <div id="home-slots-card" class="card"></div>
-  <button class="primary-btn" id="btn-home-enter">내 가능 시간 입력하기</button>
+  <div id="home-enter-btns"></div>
   <button class="ghost-btn" id="btn-home-result">합주 가능 시간 전체 보기 →</button>
 </div>
 
@@ -289,16 +296,21 @@ async function loadMonthDataByDate(month) {
 async function saveMemberData(memberIdx) {
   showLoading()
   try {
+    const today = new Date().toISOString().slice(0, 10)
+
+    // 오늘 이후 해당 멤버 데이터 전체 삭제 후 재삽입 → 플래닝 라운드 중복 방지
     await db.from('availabilities').delete()
-      .eq('month', state.currentMonth)
       .eq('member_idx', memberIdx)
+      .gte('date', today)
 
     const rows = []
     const memberDates = state.memberData[memberIdx] || {}
     Object.keys(memberDates).forEach(date => {
-      Object.keys(memberDates[date]).forEach(hour => {
-        rows.push({ month: state.currentMonth, member_idx: memberIdx, date, hour: parseInt(hour) })
-      })
+      if (date >= today) {
+        Object.keys(memberDates[date]).forEach(hour => {
+          rows.push({ month: state.currentMonth, member_idx: memberIdx, date, hour: parseInt(hour) })
+        })
+      }
     })
 
     if (rows.length > 0) {
@@ -317,6 +329,28 @@ async function saveMemberData(memberIdx) {
 }
 
 // ─── 홈 ─────────────────────────────────────────────────────
+const DAY_LABELS = ['일','월','화','수','목','금','토']
+
+function renderHomeSlot(s, si, total, showCount) {
+  const [sy, sm, sd] = s.dateStr.split('-')
+  const dw = DAY_LABELS[new Date(parseInt(sy), parseInt(sm) - 1, parseInt(sd)).getDay()]
+  const durationBadge = s.duration === 3
+    ? '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#534AB7;color:#fff;font-weight:600">3시간</span>'
+    : '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#FFF4E5;color:#B85C00">2시간</span>'
+  const countBadge = showCount
+    ? ' <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#EEEDFE;color:#3C3489;font-weight:600">' + s.count + '/' + MEMBERS.length + '명</span>'
+    : ''
+  return '<div style="padding:10px 0' + (si < total - 1 ? ';border-bottom:1px solid #f2f2f7' : '') + '">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<div>' +
+        '<div style="font-size:12px;color:#8e8e93">' + parseInt(sm) + '월 ' + parseInt(sd) + '일 (' + dw + ')</div>' +
+        '<div style="font-size:17px;font-weight:600;color:#1c1c1e;margin:2px 0">' + s.startH + ':00 – ' + s.endH + ':00</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:4px;align-items:center">' + durationBadge + countBadge + '</div>' +
+    '</div>' +
+  '</div>'
+}
+
 async function refreshHome() {
   showLoading()
   const today = new Date().toISOString().slice(0, 10)
@@ -335,37 +369,58 @@ async function refreshHome() {
     state.memberData[row.member_idx][row.date][row.hour] = true
   })
 
-  // 전원 가능 일정 카드
+  const done = Object.keys(state.memberData).map(Number)
+  const notDone = MEMBERS.map((_, i) => i).filter(i => !done.includes(i))
+  const slots = findSlots()
+  const allSlots = slots.filter(s => s.isAll)
   const slotsCard = document.getElementById('home-slots-card')
-  const DAY_LABELS = ['일','월','화','수','목','금','토']
-  const allSlots = findSlots().filter(s => s.isAll)
 
-  if (allSlots.length === 0) {
+  const notDoneHtml = notDone.length > 0 && done.length > 0
+    ? '<div style="border-top:1px solid #f2f2f7;margin-top:10px;padding-top:10px">' +
+        '<div style="font-size:11px;color:#8e8e93;margin-bottom:4px">아직 입력 안 한 멤버</div>' +
+        '<div style="font-size:13px">' + notDone.map(i => MEMBERS[i].emoji + ' ' + MEMBERS[i].name).join('  ') + '</div>' +
+      '</div>'
+    : ''
+
+  if (done.length === 0) {
     slotsCard.innerHTML =
       '<div class="section-label">전원 합주 가능 일정</div>' +
-      '<div style="color:#8e8e93;font-size:14px;line-height:1.7;padding:4px 0">' +
-      '아직 전원 가능한 시간이 없어요</div>'
-    return
+      '<div style="color:#8e8e93;font-size:14px;padding:4px 0">멤버들이 시간을 입력하면 나타나요 🎸</div>'
+  } else if (allSlots.length > 0) {
+    slotsCard.innerHTML =
+      '<div class="section-label">전원 합주 가능 일정</div>' +
+      allSlots.map((s, si) => renderHomeSlot(s, si, allSlots.length, false)).join('') +
+      notDoneHtml
+  } else {
+    const best = slots[0]
+    let inner = '<div style="font-size:13px;color:#8e8e93;margin-bottom:12px">전원 가능 시간은 아직 없어요</div>'
+    if (best) {
+      inner +=
+        '<div style="font-size:11px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.6px;font-weight:500;margin-bottom:8px">가장 많이 겹치는 시간</div>' +
+        renderHomeSlot(best, 0, 1, true)
+    }
+    slotsCard.innerHTML =
+      '<div class="section-label">전원 합주 가능 일정</div>' + inner + notDoneHtml
   }
 
-  slotsCard.innerHTML =
-    '<div class="section-label">전원 합주 가능 일정</div>' +
-    allSlots.map((s, si) => {
-      const [sy, sm, sd] = s.dateStr.split('-')
-      const dw = DAY_LABELS[new Date(parseInt(sy), parseInt(sm) - 1, parseInt(sd)).getDay()]
-      const durationBadge = s.duration === 3
-        ? '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#534AB7;color:#fff;font-weight:600">3시간</span>'
-        : '<span style="font-size:11px;padding:2px 7px;border-radius:99px;background:#FFF4E5;color:#B85C00">2시간</span>'
-      return '<div style="padding:10px 0' + (si < allSlots.length - 1 ? ';border-bottom:1px solid #f2f2f7' : '') + '">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center">' +
-          '<div>' +
-            '<div style="font-size:12px;color:#8e8e93">' + parseInt(sm) + '월 ' + parseInt(sd) + '일 (' + dw + ')</div>' +
-            '<div style="font-size:17px;font-weight:600;color:#1c1c1e;margin:2px 0">' + s.startH + ':00 – ' + s.endH + ':00</div>' +
-          '</div>' +
-          durationBadge +
-        '</div>' +
-      '</div>'
-    }).join('')
+  // D: 마지막 멤버 빠른 재입력 버튼
+  const lastIdx = localStorage.getItem('lastMemberIdx')
+  const enterBtns = document.getElementById('home-enter-btns')
+  if (lastIdx !== null) {
+    const idx = parseInt(lastIdx)
+    enterBtns.innerHTML =
+      '<button class="primary-btn" id="btn-home-quick" style="margin-top:8px">' +
+        MEMBERS[idx].emoji + ' ' + MEMBERS[idx].name + '으로 입력하기</button>' +
+      '<button class="ghost-btn" id="btn-home-enter" style="margin-top:8px">다른 멤버로 입력하기</button>'
+    document.getElementById('btn-home-quick').addEventListener('click', () => {
+      state.currentMemberIdx = idx
+      memberSelected()
+    })
+    document.getElementById('btn-home-enter').addEventListener('click', () => goTo('screen-select-member'))
+  } else {
+    enterBtns.innerHTML = '<button class="primary-btn" id="btn-home-enter" style="margin-top:8px">내 가능 시간 입력하기</button>'
+    document.getElementById('btn-home-enter').addEventListener('click', () => goTo('screen-select-member'))
+  }
 }
 
 // ─── 멤버 선택 ───────────────────────────────────────────────
@@ -391,8 +446,12 @@ function renderMemberGrid() {
 
 function memberSelected() {
   if (state.currentMemberIdx === null) return
+  localStorage.setItem('lastMemberIdx', state.currentMemberIdx)
   const existing = state.memberData[state.currentMemberIdx]
   state.selectedDates = existing ? Object.keys(existing).sort() : []
+  const now = new Date()
+  state.viewMonth = now.getMonth()
+  state.viewYear = now.getFullYear()
   document.getElementById('cal-member-name').textContent = MEMBERS[state.currentMemberIdx].name + '의 가능한 날짜'
   renderCalendar()
   goTo('screen-calendar')
@@ -439,6 +498,12 @@ function renderCalendar() {
     grid.appendChild(el)
   }
   document.getElementById('cal-next-btn').disabled = state.selectedDates.length === 0
+  const now = new Date()
+  const atMin = state.viewYear === now.getFullYear() && state.viewMonth === now.getMonth()
+  const prevBtn = document.getElementById('btn-cal-prev')
+  prevBtn.disabled = atMin
+  prevBtn.style.opacity = atMin ? '0.3' : '1'
+  prevBtn.style.cursor = atMin ? 'default' : 'pointer'
 }
 
 function toggleDate(dateStr, el) {
@@ -450,9 +515,14 @@ function toggleDate(dateStr, el) {
 }
 
 function changeMonth(dir) {
-  state.viewMonth += dir
-  if (state.viewMonth > 11) { state.viewMonth = 0; state.viewYear++ }
-  if (state.viewMonth < 0) { state.viewMonth = 11; state.viewYear-- }
+  const now = new Date()
+  let nm = state.viewMonth + dir
+  let ny = state.viewYear
+  if (nm > 11) { nm = 0; ny++ }
+  if (nm < 0) { nm = 11; ny-- }
+  if (ny < now.getFullYear() || (ny === now.getFullYear() && nm < now.getMonth())) return
+  state.viewMonth = nm
+  state.viewYear = ny
   renderCalendar()
 }
 
@@ -718,7 +788,6 @@ async function renderResult() {
 
 // ─── 초기화 ──────────────────────────────────────────────────
 async function init() {
-  document.getElementById('btn-home-enter').addEventListener('click', () => goTo('screen-select-member'))
   document.getElementById('btn-home-result').addEventListener('click', () => goTo('screen-result'))
   document.getElementById('member-next-btn').addEventListener('click', () => memberSelected())
   document.getElementById('btn-member-back').addEventListener('click', () => goTo('screen-home'))
