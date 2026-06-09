@@ -70,30 +70,15 @@
   .cal-day.sat { color: #007aff; }
   .cal-day.past.sun, .cal-day.past.sat { color: #c7c7cc; }
 
-  .time-grid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .time-grid {
-    display: grid;
-    grid-template-columns: 40px repeat(var(--time-cols, 16), 34px);
-    border: 1px solid #e5e5ea; border-radius: 10px; overflow: hidden;
-    min-width: max-content;
+  .hour-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .hour-btn {
+    padding: 11px 4px; border: 1.5px solid #e5e5ea; border-radius: 10px;
+    font-size: 13px; text-align: center; cursor: pointer; background: #fff;
+    color: #1c1c1e; user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none; transition: all 0.1s;
   }
-  .tg-header {
-    background: #f2f2f7; font-size: 10px; color: #8e8e93;
-    text-align: center; padding: 5px 2px; border-bottom: 1px solid #e5e5ea;
-  }
-  .tg-label {
-    background: #f2f2f7; font-size: 10px; color: #8e8e93;
-    padding: 5px 3px; border-right: 1px solid #e5e5ea;
-    border-bottom: 1px solid #e5e5ea; display: flex; align-items: center;
-  }
-  .tg-cell {
-    height: 38px; border-bottom: 1px solid #e5e5ea;
-    border-right: 1px solid #e5e5ea; cursor: pointer;
-    transition: background 0.08s; user-select: none;
-    -webkit-user-select: none; -webkit-touch-callout: none;
-  }
-  .tg-cell.selected { background: #534AB7; }
-  .tg-cell:not(.selected):active { background: #EEEDFE; }
+  .hour-btn.selected { background: #534AB7; border-color: #534AB7; color: #fff; font-weight: 600; }
+  .hour-btn:active:not(.selected) { background: #EEEDFE; }
 
   .result-slot {
     background: #fff; border: 1.5px solid #d1cff8; border-radius: 14px;
@@ -448,7 +433,7 @@ function renderAllDateCards() {
   const wrap = document.getElementById('time-cards-wrap')
   wrap.innerHTML = ''
   const days2 = ['일','월','화','수','목','금','토']
-  let touchStartX = 0, touchStartY = 0, touchStartCell = null, dragLocked = null
+  let touchStartX = 0, touchStartY = 0, touchStartBtn = null
 
   state.selectedDates.forEach(dateStr => {
     const [y, m, d] = dateStr.split('-')
@@ -463,100 +448,64 @@ function renderAllDateCards() {
     dateLabel.textContent = parseInt(m) + '월 ' + parseInt(d) + '일 (' + dow + ')'
     card.appendChild(dateLabel)
 
-    const gridWrap = document.createElement('div')
-    gridWrap.className = 'time-grid-wrap'
-
     const grid = document.createElement('div')
-    grid.className = 'time-grid'
-    grid.style.setProperty('--time-cols', HOURS.length)
-
-    // 헤더
-    const corner = document.createElement('div')
-    corner.className = 'tg-header'
-    grid.appendChild(corner)
-    HOURS.forEach(h => {
-      const el = document.createElement('div')
-      el.className = 'tg-header'
-      el.textContent = h + '시'
-      grid.appendChild(el)
-    })
-
-    // 셀행
-    const rowLabel = document.createElement('div')
-    rowLabel.className = 'tg-label'
-    rowLabel.textContent = '가능'
-    grid.appendChild(rowLabel)
+    grid.className = 'hour-grid'
 
     HOURS.forEach(h => {
-      const cell = document.createElement('div')
-      cell.className = 'tg-cell' + (existing[h] ? ' selected' : '')
-      cell.dataset.hour = h
-      cell.dataset.date = dateStr
+      const btn = document.createElement('div')
+      btn.className = 'hour-btn' + (existing[h] ? ' selected' : '')
+      btn.dataset.hour = h
+      btn.dataset.date = dateStr
+      btn.textContent = h + '시'
 
-      cell.addEventListener('mousedown', e => {
+      btn.addEventListener('mousedown', e => {
         e.preventDefault()
         state.isDragging = true
-        state.dragMode = !cell.classList.contains('selected')
-        toggleCell(cell)
+        state.dragMode = !btn.classList.contains('selected')
+        toggleCell(btn)
       })
-      cell.addEventListener('mouseover', () => {
-        if (state.isDragging) toggleCell(cell, state.dragMode)
+      btn.addEventListener('mouseover', () => {
+        if (state.isDragging) toggleCell(btn, state.dragMode)
       })
-      cell.addEventListener('touchstart', e => {
+      btn.addEventListener('touchstart', e => {
         touchStartX = e.touches[0].clientX
         touchStartY = e.touches[0].clientY
-        touchStartCell = cell
-        dragLocked = null
+        touchStartBtn = btn
         state.isDragging = true
-        state.dragMode = !cell.classList.contains('selected')
+        state.dragMode = !btn.classList.contains('selected')
       }, { passive: true })
 
-      grid.appendChild(cell)
+      grid.appendChild(btn)
     })
 
-    gridWrap.appendChild(grid)
+    grid.addEventListener('contextmenu', e => e.preventDefault())
 
-    gridWrap.addEventListener('contextmenu', e => e.preventDefault())
-    gridWrap.addEventListener('touchmove', e => {
+    // 드래그 선택 (스크롤 충돌 없음)
+    grid.addEventListener('touchmove', e => {
       if (!state.isDragging) return
+      e.preventDefault()
       const t = e.touches[0]
-      const absDx = Math.abs(t.clientX - touchStartX)
-      const absDy = Math.abs(t.clientY - touchStartY)
-      if (!dragLocked && (absDx > 10 || absDy > 10)) {
-        const elUnder = document.elementFromPoint(t.clientX, t.clientY)
-        dragLocked = (elUnder && elUnder.classList.contains('tg-cell') && elUnder !== touchStartCell)
-          ? 'select' : 'scroll'
-      }
-      if (dragLocked === 'select') {
-        e.preventDefault()
-        const elUnder = document.elementFromPoint(t.clientX, t.clientY)
-        if (elUnder && elUnder.classList.contains('tg-cell')) toggleCell(elUnder, state.dragMode)
-      }
+      const el = document.elementFromPoint(t.clientX, t.clientY)
+      if (el && el.classList.contains('hour-btn')) toggleCell(el, state.dragMode)
     }, { passive: false })
 
-    gridWrap.addEventListener('touchend', e => {
-      if (state.isDragging && touchStartCell) {
+    // 탭 처리: 시작·끝 위치가 가까우면 토글
+    grid.addEventListener('touchend', e => {
+      if (state.isDragging && touchStartBtn) {
         const touch = e.changedTouches[0]
-        const totalDx = Math.abs(touch.clientX - touchStartX)
-        const totalDy = Math.abs(touch.clientY - touchStartY)
-        if (totalDx < 12 && totalDy < 12) toggleCell(touchStartCell)
+        const dx = Math.abs(touch.clientX - touchStartX)
+        const dy = Math.abs(touch.clientY - touchStartY)
+        if (dx < 12 && dy < 12) toggleCell(touchStartBtn)
       }
       state.isDragging = false
-      dragLocked = null
     })
 
-    card.appendChild(gridWrap)
-
-    const hint = document.createElement('p')
-    hint.style.cssText = 'font-size:11px;color:#aeaeb2;margin-top:8px;text-align:center'
-    hint.textContent = '탭 또는 드래그로 선택 · 옆으로 스크롤'
-    card.appendChild(hint)
-
+    card.appendChild(grid)
     wrap.appendChild(card)
   })
 
   document.addEventListener('mouseup', () => { state.isDragging = false })
-  document.addEventListener('touchend', () => { state.isDragging = false; dragLocked = null })
+  document.addEventListener('touchend', () => { state.isDragging = false })
 }
 
 function toggleCell(cell, forceMode) {
