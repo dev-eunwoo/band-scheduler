@@ -520,7 +520,7 @@ function renderAllDateCards() {
       const t = e.touches[0]
       const absDx = Math.abs(t.clientX - touchStartX)
       const absDy = Math.abs(t.clientY - touchStartY)
-      if (!dragLocked && (absDx > 6 || absDy > 6)) {
+      if (!dragLocked && (absDx > 10 || absDy > 10)) {
         const elUnder = document.elementFromPoint(t.clientX, t.clientY)
         dragLocked = (elUnder && elUnder.classList.contains('tg-cell') && elUnder !== touchStartCell)
           ? 'select' : 'scroll'
@@ -532,8 +532,13 @@ function renderAllDateCards() {
       }
     }, { passive: false })
 
-    gridWrap.addEventListener('touchend', () => {
-      if (state.isDragging && dragLocked === null && touchStartCell) toggleCell(touchStartCell)
+    gridWrap.addEventListener('touchend', e => {
+      if (state.isDragging && touchStartCell) {
+        const touch = e.changedTouches[0]
+        const totalDx = Math.abs(touch.clientX - touchStartX)
+        const totalDy = Math.abs(touch.clientY - touchStartY)
+        if (totalDx < 12 && totalDy < 12) toggleCell(touchStartCell)
+      }
       state.isDragging = false
       dragLocked = null
     })
