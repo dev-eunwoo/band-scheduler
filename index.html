@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>아무런밴드 합주 스케줄러</title>
+<title>합주 스케줄러</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -156,7 +156,7 @@
 <div id="screen-home" class="screen active">
   <div class="header">
     <div style="font-size:36px;margin-bottom:10px">🎸</div>
-    <h1>아무런밴드 합주 스케줄러</h1>
+    <h1>합주 스케줄러</h1>
     <p>가능한 시간을 입력하면<br>겹치는 시간을 자동으로 찾아줘요</p>
   </div>
   <div class="card">
@@ -219,8 +219,8 @@
 
 <script>
 // ─── Supabase 설정 ───────────────────────────────────────────
-const SUPABASE_URL = 'https://ppyagdblitedffvaaywu.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_jwuW8cPERQ2CCPTZtiYT1w_bSQAl2km'
+const SUPABASE_URL = 'YOUR_SUPABASE_URL'
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // ─── 멤버 정보 ───────────────────────────────────────────────
@@ -366,13 +366,14 @@ function renderCalendar() {
   const grid = document.getElementById('cal-grid')
   grid.innerHTML = ''
 
-  ['일','월','화','수','목','금','토'].forEach((d, i) => {
+  const dayLabels = ['일','월','화','수','목','금','토']
+  for (let i = 0; i < dayLabels.length; i++) {
     const el = document.createElement('div')
     el.className = 'cal-day-label'
     el.style.color = i === 0 ? '#ff3b30' : i === 6 ? '#007aff' : ''
-    el.textContent = d
+    el.textContent = dayLabels[i]
     grid.appendChild(el)
-  })
+  }
 
   const first = new Date(state.viewYear, state.viewMonth, 1).getDay()
   const days = new Date(state.viewYear, state.viewMonth + 1, 0).getDate()
